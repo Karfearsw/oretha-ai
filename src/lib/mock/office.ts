@@ -1,0 +1,233 @@
+import type {
+  Employee,
+  Task,
+  PulseMetric,
+  PulseNote,
+} from "@/lib/types";
+
+export const EMPLOYEES: Employee[] = [
+  {
+    id: "oretha",
+    name: "Oretha",
+    title: "Chief Orchestrator",
+    department: "Ops",
+    capabilities: "Runs the floor. Delegates, tracks, reports.",
+    skills: [
+      { name: "Orchestration", level: 98 },
+      { name: "Company context", level: 95 },
+      { name: "Negotiation", level: 88 },
+    ],
+    status: "working",
+    sampleTasks: [
+      "Compile the Monday exec brief",
+      "Rebalance the Q4 board",
+      "Draft the partner update",
+    ],
+  },
+  {
+    id: "kevo",
+    name: "Kevo",
+    title: "CTO · Engineering Lead",
+    department: "Engineering",
+    capabilities: "Ships the Softwear. PRs, issues, incidents.",
+    skills: [
+      { name: "Architecture", level: 94 },
+      { name: "Code review", level: 96 },
+      { name: "DevOps", level: 85 },
+    ],
+    status: "working",
+    sampleTasks: [
+      "Review PR #482",
+      "Triage overnight CI failures",
+      "Draft v2 rollout plan",
+    ],
+  },
+  {
+    id: "muse",
+    name: "Muse",
+    title: "Media Director",
+    department: "Media",
+    capabilities: "Cover art, clips, hooks, full content sprints.",
+    skills: [
+      { name: "Art direction", level: 92 },
+      { name: "Video editing", level: 88 },
+      { name: "Copywriting", level: 90 },
+    ],
+    status: "online",
+    sampleTasks: [
+      "Ship 'Midnight Ankh' cover",
+      "Cut the 30s teaser",
+      "Draft 10 hooks for launch week",
+    ],
+  },
+  {
+    id: "booker",
+    name: "Booker",
+    title: "Real Estate Analyst",
+    department: "Real Estate",
+    capabilities: "Comps, cash flow, deal memos.",
+    skills: [
+      { name: "Underwriting", level: 91 },
+      { name: "Market research", level: 87 },
+      { name: "Negotiation support", level: 82 },
+    ],
+    status: "idle",
+    sampleTasks: [
+      "Underwrite 124 Marcus Ave",
+      "Refresh comp set for the duplex",
+      "Scan new listings under $400k",
+    ],
+  },
+  {
+    id: "sentry",
+    name: "Sentry",
+    title: "Security Recon",
+    department: "Engineering",
+    capabilities: "Perimeter watch, leak monitoring, hardening.",
+    skills: [
+      { name: "Recon", level: 93 },
+      { name: "Threat modeling", level: 89 },
+      { name: "Hardening", level: 91 },
+    ],
+    status: "online",
+    sampleTasks: [
+      "Weekly perimeter scan",
+      "Audit new dependencies",
+      "Flag expired vendor certs",
+    ],
+  },
+  {
+    id: "steward",
+    name: "Steward",
+    title: "Office Manager",
+    department: "Ops",
+    capabilities: "Inbox triage, task intake, follow-ups.",
+    skills: [
+      { name: "Inbox ops", level: 97 },
+      { name: "Scheduling", level: 90 },
+      { name: "Documentation", level: 85 },
+    ],
+    status: "idle",
+    sampleTasks: [
+      "Triage today's inbox",
+      "Prep the 2pm doc",
+      "Chase outstanding invoices",
+    ],
+  },
+];
+
+export const TASKS: Task[] = [
+  {
+    id: "task-1",
+    title: "Review launch PR #482",
+    source: "GitHub",
+    lane: "In Progress",
+    assigneeId: "kevo",
+    due: "Today",
+    priority: "high",
+  },
+  {
+    id: "task-2",
+    title: "Approve teaser hooks",
+    source: "Linear",
+    lane: "In Progress",
+    assigneeId: "muse",
+    due: "Today",
+    priority: "med",
+  },
+  {
+    id: "task-3",
+    title: "Underwrite 124 Marcus Ave",
+    source: "Email",
+    lane: "Inbox",
+    assigneeId: "booker",
+    due: "Tomorrow",
+    priority: "high",
+  },
+  {
+    id: "task-4",
+    title: "Renew vendor SSL cert",
+    source: "Email",
+    lane: "Inbox",
+    assigneeId: "sentry",
+    due: "Mon",
+    priority: "med",
+  },
+  {
+    id: "task-5",
+    title: "Draft partner update",
+    source: "Manual",
+    lane: "Waiting",
+    assigneeId: "oretha",
+    due: "Wed",
+    priority: "low",
+  },
+  {
+    id: "task-6",
+    title: "Morning inbox sweep",
+    source: "Email",
+    lane: "Done",
+    assigneeId: "steward",
+    due: "Done 8:12am",
+    priority: "low",
+  },
+  {
+    id: "task-7",
+    title: "Sprint board grooming",
+    source: "Linear",
+    lane: "Done",
+    assigneeId: "kevo",
+    due: "Done 7:40am",
+    priority: "low",
+  },
+];
+
+export const PULSE_METRICS: PulseMetric[] = [
+  {
+    id: "commits",
+    label: "Commits this week",
+    value: "148",
+    delta: "+12%",
+    trend: "up",
+    spark: [8, 12, 9, 14, 11, 16, 18],
+  },
+  {
+    id: "tasks",
+    label: "Tasks completed",
+    value: "37",
+    delta: "+9%",
+    trend: "up",
+    spark: [5, 7, 6, 9, 8, 11, 12],
+  },
+  {
+    id: "content",
+    label: "Content shipped",
+    value: "9",
+    delta: "+3",
+    trend: "up",
+    spark: [1, 2, 2, 1, 3, 3, 4],
+  },
+  {
+    id: "response",
+    label: "Avg agent response",
+    value: "42s",
+    delta: "-8s",
+    trend: "up",
+    spark: [9, 8, 8, 7, 6, 5, 5],
+  },
+];
+
+export const PULSE_NOTES: PulseNote[] = [
+  {
+    id: "pn1",
+    agentId: "oretha",
+    text: "Marketing is behind schedule on launch assets; Engineering is ahead of sprint. Rebalanced 2 tasks.",
+    time: "9:58am",
+  },
+  {
+    id: "pn2",
+    agentId: "sentry",
+    text: "No new exposures overnight. One vendor cert expires in 6 days — task on the board.",
+    time: "7:30am",
+  },
+];
