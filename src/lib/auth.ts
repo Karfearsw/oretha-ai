@@ -15,6 +15,13 @@ export type SessionUser = {
   tagline: string | null;
   plan: string;
   avatarSeed: string;
+  setupCompleted: boolean;
+  agentName: string;
+  agentEmoji: string;
+  voice: string | null;
+  censorship: string;
+  empowerment: boolean;
+  responseLength: string;
 };
 
 export function hashPassword(password: string) {
@@ -60,6 +67,13 @@ export async function getSessionUser(): Promise<SessionUser | null> {
         tagline: true,
         plan: true,
         avatarSeed: true,
+        setupCompleted: true,
+        agentName: true,
+        agentEmoji: true,
+        voice: true,
+        censorship: true,
+        empowerment: true,
+        responseLength: true,
       },
     });
     return user;

@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 
-export function AuthForm({ mode }: { mode: "signup" | "signin" }) {
+export function AuthForm({
+  mode,
+  next = "/hub",
+}: {
+  mode: "signup" | "signin";
+  /** Route to push after success — signup defaults into the setup wizard via page prop. */
+  next?: string;
+}) {
   const router = useRouter();
   const isSignup = mode === "signup";
 
@@ -34,7 +41,7 @@ export function AuthForm({ mode }: { mode: "signup" | "signin" }) {
         setBusy(false);
         return;
       }
-      router.replace("/hub");
+      router.replace(isSignup ? next : "/hub");
       router.refresh();
     } catch {
       setError("Network hiccup. Check your connection and try again.");

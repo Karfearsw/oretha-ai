@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, SquarePen, Ellipsis } from "lucide-react";
+import { ChevronDown, SquarePen, Ellipsis, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 export function FileSheet({
@@ -10,20 +10,24 @@ export function FileSheet({
   filename,
   content,
   onClose,
+  onSave,
 }: {
   open: boolean;
   filename: string;
   content: string;
   onClose: () => void;
+  /** When provided, Save persists through this before closing edit mode. */
+  onSave?: (filename: string, content: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
+  const [saving, setSaving] = useState(false);
 
-  // Re-sync the draft each time the sheet opens (content may differ per file)
   useEffect(() => {
     if (open) {
       setDraft(content);
       setEditing(false);
+      setSaving(false);
     }
   }, [open, content]);
 
@@ -32,6 +36,20 @@ export function FileSheet({
     setDraft(content);
     onClose();
   };
+
+  async function save() {
+    if (!onSave) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(filename, draft);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <AnimatePresence>
@@ -95,8 +113,10 @@ export function FileSheet({
                 variant="primary"
                 size="md"
                 className="flex-1"
-                onClick={() => setEditing(false)}
+                onClick={save}
+                disabled={saving}
               >
+                {saving ? <Loader2 size={16} className="animate-spin" /> : null}
                 Save
               </Button>
             </div>

@@ -13,7 +13,7 @@ export default function SignUpPage() {
           One account. Every agent, your whole office, and the lab.
         </p>
       </div>
-      <AuthForm mode="signup" />
+      <AuthForm mode="signup" next="/setup" />
     </main>
   );
 }

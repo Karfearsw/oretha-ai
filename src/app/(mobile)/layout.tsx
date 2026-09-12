@@ -11,6 +11,9 @@ export default async function MobileLayout({
   if (!user) {
     redirect("/welcome");
   }
+  if (!user.setupCompleted) {
+    redirect("/setup");
+  }
 
   return <AppShell user={user}>{children}</AppShell>;
 }

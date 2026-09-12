@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
@@ -27,7 +27,8 @@ import { OrethaMark } from "@/components/ui/OrethaMark";
 import { Chip } from "@/components/ui/Chip";
 import { agentById } from "@/lib/mock/agents";
 import { MESSAGES, RUNS, THREADS } from "@/lib/mock/threads";
-import { SOUL_MD, MEMORY_MD, IDENTITY_MD } from "@/lib/mock/content";
+import { generateAgentFiles } from "@/lib/agentFiles";
+import { useSessionUser } from "@/components/layout/AppShell";
 import type { ChatMessage } from "@/lib/types";
 
 type Seg = "activity" | "guardrails" | "memory" | "files";
@@ -39,17 +40,16 @@ const SEGMENTS: SegmentItem<Seg>[] = [
   { value: "files", label: "Files", icon: Fingerprint },
 ];
 
-const MEMORY_FILES = [
-  { name: "SOUL.md", content: SOUL_MD },
-  { name: "MEMORY.md", content: MEMORY_MD },
-  { name: "IDENTITY.md", content: IDENTITY_MD },
-];
+
 
 export default function ChatRoomPage() {
   const params = useParams<{ threadId: string }>();
   const threadId = params.threadId;
   const thread = THREADS.find((t) => t.id === threadId) ?? THREADS[0];
   const lead = agentById(thread.agentIds[0]) ?? agentById("oretha")!;
+  const sessionUser = useSessionUser();
+  const agentName =
+    lead.id === "oretha" ? sessionUser?.agentName || "Oretha" : lead.name;
 
   const [seg, setSeg] = useState<Seg>("activity");
   const [messages, setMessages] = useState<ChatMessage[]>(
@@ -65,7 +65,41 @@ export default function ChatRoomPage() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(thread.running ?? false);
   const [fileOpen, setFileOpen] = useState<string | null>(null);
+  const [dbFiles, setDbFiles] = useState<Record<string, string>>({});
   const listRef = useRef<HTMLDivElement>(null);
+
+  // templates from her setup answers (fallback until DB files load)
+  const MEMORY_FILES = useMemo(() => {
+    const generated = generateAgentFiles({
+      agentName,
+      agentEmoji: sessionUser?.agentEmoji ?? "",
+      voice: "balanced",
+      censorship: "open",
+      empowerment: sessionUser?.empowerment ?? true,
+      responseLength: "balanced",
+      timezone: null,
+      userFirstName: sessionUser?.name?.split(" ")[0] ?? "friend",
+      userWork: null,
+      userInterests: [],
+    });
+    return [
+      { name: "SOUL.md", content: generated["SOUL.md"] },
+      { name: "MEMORY.md", content: generated["MEMORY.md"] },
+      { name: "IDENTITY.md", content: generated["IDENTITY.md"] },
+    ];
+  }, [agentName, sessionUser]);
+
+  // real persisted files win once loaded
+  useEffect(() => {
+    fetch("/api/agent-files")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const map: Record<string, string> = {};
+        for (const f of d?.files ?? []) map[f.name] = f.content;
+        setDbFiles(map);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -115,7 +149,7 @@ export default function ChatRoomPage() {
             )}
             <span className="rounded-full bg-elevated px-3.5 py-1.5 text-center">
               <span className="block font-display text-[13px] font-bold leading-tight text-cream">
-                {lead.name}
+                {agentName}
               </span>
               <span className="block text-[11.5px] leading-tight text-sand">
                 {busy ? "is working" : "is ready"}
@@ -252,8 +286,22 @@ export default function ChatRoomPage() {
       <FileSheet
         open={fileOpen !== null}
         filename={fileOpen ?? ""}
-        content={MEMORY_FILES.find((f) => f.name === fileOpen)?.content ?? ""}
+        content={
+          fileOpen
+            ? (dbFiles[fileOpen] ??
+              MEMORY_FILES.find((f) => f.name === fileOpen)?.content ??
+              "")
+            : ""
+        }
         onClose={() => setFileOpen(null)}
+        onSave={async (name, content) => {
+          setDbFiles((f) => ({ ...f, [name]: content }));
+          await fetch("/api/agent-files", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, content }),
+          });
+        }}
       />
     </main>
   );

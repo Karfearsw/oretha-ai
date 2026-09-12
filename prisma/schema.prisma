@@ -8,18 +8,42 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  tagline      String?
-  plan         String   @default("free")
-  avatarSeed   String   @default("T")
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  name           String
+  tagline        String?
+  plan           String   @default("free")
+  avatarSeed     String   @default("T")
+
+  // agent setup
+  setupCompleted Boolean  @default(false)
+  agentName      String   @default("Oretha")
+  agentEmoji     String   @default("")
+  voice          String?
+  timezone       String?
+  censorship     String   @default("open")
+  empowerment    Boolean  @default(true)
+  responseLength String   @default("balanced")
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  accounts Account[]
-  threads  Thread[]
+  accounts  Account[]
+  threads   Thread[]
+  agentFiles AgentFile[]
+}
+
+model AgentFile {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
 }
 
 model Account {
