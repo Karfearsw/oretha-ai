@@ -7,6 +7,7 @@ export default defineConfig({
     path: path.join("prisma", "migrations"),
   },
   datasource: {
-    url: "file:./db/oretha.db",
+    url:
+      process.env.DATABASE_URL ?? "file:./db/oretha.db",
   },
 });
