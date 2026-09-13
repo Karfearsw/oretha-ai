@@ -30,7 +30,13 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Oretha",
   },
-  icons: { icon: "/oretha-logo.jpg", apple: "/oretha-logo.jpg" },
+  icons: {
+    icon: [
+      { url: "/icons/icon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {

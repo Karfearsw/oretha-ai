@@ -9,7 +9,7 @@ export function OrethaMark({
 }) {
   return (
     <Image
-      src="/oretha-logo.jpg"
+      src="/oretha-mark.png"
       alt="Oretha"
       width={size}
       height={size}

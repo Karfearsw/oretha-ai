@@ -13,15 +13,27 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait",
     icons: [
       {
-        src: "/oretha-logo.jpg",
-        sizes: "512x512",
-        type: "image/jpeg",
+        src: "/icons/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/icons/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/icons/oretha-icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
+      },
+      {
+        src: "/icons/oretha-icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
         purpose: "maskable",
       },
     ],
