@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Mail,
   Github,
@@ -36,6 +36,32 @@ const PRIORITY_TONE = {
 
 export default function BoardPage() {
   const [selected, setSelected] = useState<Task | null>(null);
+  const [apiTasks, setApiTasks] = useState<Task[]>([]);
+
+  // Real board rows: email triage + chat-created tasks.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/tasks")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d?.tasks) return;
+        setApiTasks(
+          (d.tasks as Task[]).map((t) => ({
+            ...t,
+            source: t.source as TaskSource,
+            lane: t.lane as TaskLane,
+            due: t.due ?? "—",
+            overdue: false,
+          })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const allTasks: Task[] = [...TASKS, ...apiTasks];
 
   return (
     <main className="pad-safe-top flex flex-col px-4 pt-2">
@@ -54,7 +80,7 @@ export default function BoardPage() {
 
       <div className="no-scrollbar mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
         {LANES.map((lane) => {
-          const laneTasks = TASKS.filter((t) => t.lane === lane);
+          const laneTasks = allTasks.filter((t) => t.lane === lane);
           return (
             <section
               key={lane}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { AtSign } from "lucide-react";
 import { AgentAvatar } from "@/components/ui/Avatar";
 import { Chip } from "@/components/ui/Chip";
 import { Sheet } from "@/components/ui/Sheet";
@@ -8,6 +9,27 @@ import { Button } from "@/components/ui/Button";
 import { OfficeSubTabs } from "@/components/office/OfficeSubTabs";
 import { EMPLOYEES } from "@/lib/mock/office";
 import type { Department, Employee } from "@/lib/types";
+
+/** The mailroom agent card — born when the user connects an AgentMail inbox. */
+const MAILROOM_CARD: Employee = {
+  id: "mailroom",
+  name: "Mailroom",
+  title: "Email Triage Clerk",
+  department: "Ops",
+  capabilities:
+    "Owns the agent's real AgentMail inbox. Triages every inbound email into tasks, draft replies, or files it — so nothing slips.",
+  skills: [
+    { name: "Email triage", level: 96 },
+    { name: "Task extraction", level: 90 },
+    { name: "Reply drafting", level: 84 },
+  ],
+  sampleTasks: [
+    "Turn the vendor invoice email into a board task",
+    "Draft a reply to the venue coordinator",
+    "File the newsletter under no-action",
+  ],
+  status: "online" as const,
+};
 
 const DEPTS: ("All" | Department)[] = [
   "All",
@@ -21,8 +43,26 @@ const DEPTS: ("All" | Department)[] = [
 export default function DirectoryPage() {
   const [dept, setDept] = useState<(typeof DEPTS)[number]>("All");
   const [selected, setSelected] = useState<Employee | null>(null);
+  const [mailroom, setMailroom] = useState<Employee | null>(null);
 
-  const staff = dept === "All" ? EMPLOYEES : EMPLOYEES.filter((e) => e.department === dept);
+  // The mailroom card only exists once an inbox is connected.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/mail/sync")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive) return;
+        setMailroom(d?.mailboxes?.length > 0 ? MAILROOM_CARD : null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const staffAll = mailroom ? [MAILROOM_CARD, ...EMPLOYEES] : EMPLOYEES;
+  const staff =
+    dept === "All" ? staffAll : staffAll.filter((e) => e.department === dept);
 
   return (
     <main className="pad-safe-top flex flex-col px-4 pt-2">
@@ -58,6 +98,9 @@ export default function DirectoryPage() {
             <span className="min-w-0 flex-1">
               <span className="block truncate font-display text-[15px] font-bold text-cream">
                 {e.name} — {e.title}
+                {e.id === "mailroom" && (
+                  <AtSign size={13} className="ml-1 inline text-gold" />
+                )}
               </span>
               <span className="mt-0.5 block truncate text-[12.5px] text-sand">
                 {e.capabilities}

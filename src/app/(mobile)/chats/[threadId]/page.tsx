@@ -89,6 +89,7 @@ export default function ChatRoomPage() {
       userFirstName: sessionUser?.name?.split(" ")[0] ?? "friend",
       userWork: null,
       userInterests: [],
+      mailboxApiKey: null,
     });
     return [
       { name: "SOUL.md", content: generated["SOUL.md"] },

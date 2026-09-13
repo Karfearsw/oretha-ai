@@ -2,12 +2,23 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { buildSystemMessages } from "@/lib/systemPrompt";
-import { llmConfigured, streamChat, type LlmMessage } from "@/lib/llm";
+import {
+  llmConfigured,
+  toolCallSupported,
+  streamChatWithTools,
+  type LlmMessage,
+  type LlmToolCall,
+} from "@/lib/llm";
+import { executeTool, parseToolArgs } from "@/lib/tools";
 import { scheduleMemoryUpdate } from "@/lib/memory";
 
+const MAX_TOOL_TURNS = 3;
+
 /* POST /api/chat  { threadId, message }
- * Persists both sides, streams the reply as plain text, then kicks off
- * the background memory update. */
+ * Persists both sides, streams the reply as plain text. Tool calling
+ * follows the Meta cookbook loop: on finish_reason="tool_calls", run
+ * each call, append the assistant message + one `tool` message per
+ * tool_call_id, and continue — max MAX_TOOL_TURNS turns. */
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -50,14 +61,61 @@ export async function POST(req: Request) {
   const system = await buildSystemMessages(user.id);
   const llmMessages: LlmMessage[] = [...system, ...historyMessages];
 
+  const tools = toolCallSupported()
+    ? (await import("@/lib/tools")).TOOLS
+    : undefined;
+
+  const toolCtx = {
+    agentName: user.agentName || "Oretha",
+    ownerName: user.name,
+    ownerWork: user.tagline ?? null,
+  };
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let full = "";
       try {
-        for await (const delta of streamChat(llmMessages)) {
-          full += delta;
-          controller.enqueue(encoder.encode(delta));
+        // ── The tool loop (Meta cookbook pattern) ──────────────────────
+        for (let turn = 0; turn <= MAX_TOOL_TURNS; turn++) {
+          let turnText = "";
+          let calls: LlmToolCall[] | null = null;
+
+          for await (const ev of streamChatWithTools(llmMessages, tools)) {
+            if (ev.type === "text") {
+              turnText += ev.delta;
+              controller.enqueue(encoder.encode(ev.delta));
+            } else {
+              calls = ev.calls;
+            }
+          }
+
+          full += turnText;
+
+          if (!calls || calls.length === 0) break; // plain-text answer — done
+
+          // Append the assistant message carrying the tool_calls…
+          llmMessages.push({
+            role: "assistant",
+            content: turnText,
+            tool_calls: calls,
+          });
+
+          // …then one `tool` message per call with the matching id.
+          for (const call of calls) {
+            const result = await executeTool(
+              user.id,
+              call.name,
+              parseToolArgs(call.arguments),
+              toolCtx,
+            );
+            llmMessages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: result,
+            });
+          }
+          // Loop: the model now sees the results and answers.
         }
       } catch (err) {
         console.error("[chat] stream failed:", err);

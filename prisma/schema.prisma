@@ -29,9 +29,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  accounts  Account[]
-  threads   Thread[]
+  accounts   Account[]
+  threads    Thread[]
   agentFiles AgentFile[]
+  mailboxes  Mailbox[]
+  tasks      Task[]
 }
 
 model AgentFile {
@@ -78,4 +80,59 @@ model Message {
   content   String
   createdAt DateTime @default(now())
   thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+/* ── KEVO mailroom: agent-owned inboxes (AgentMail) ────────────────── */
+
+model Mailbox {
+  id           String    @id @default(cuid())
+  userId       String
+  provider     String    @default("agentmail")
+  apiKeyCipher String
+  iv           String
+  authTag      String
+  inboxId      String
+  address      String
+  displayName  String?
+  verified     Boolean   @default(false)
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emails       EmailMessage[]
+
+  @@unique([userId, inboxId])
+}
+
+model EmailMessage {
+  id         String    @id @default(cuid())
+  mailboxId  String
+  remoteId   String    @unique
+  fromAddr   String
+  subject    String
+  preview    String    @default("")
+  receivedAt DateTime
+  triaged    Boolean   @default(false)
+  action     String?
+  taskTitle  String?
+  mailbox    Mailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  task       Task?
+}
+
+/* Task board rows — surfaced from email triage, chat, or manual entry. */
+
+model Task {
+  id         String        @id @default(cuid())
+  userId     String
+  title      String
+  source     String        @default("Manual")
+  lane       String        @default("In Progress")
+  assigneeId String        @default("oretha")
+  priority   String        @default("med")
+  due        String?
+  emailId    String?       @unique
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email      EmailMessage? @relation(fields: [emailId], references: [id])
 }

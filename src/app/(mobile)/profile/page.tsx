@@ -62,6 +62,7 @@ export default function ProfilePage() {
         userFirstName: first,
         userWork: null,
         userInterests: [],
+        mailboxApiKey: null,
       }),
     [agentName, user, censorship, empowerment, first],
   );

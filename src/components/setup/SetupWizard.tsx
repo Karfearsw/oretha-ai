@@ -12,6 +12,7 @@ import {
   UserRound,
   Scale,
   UsersRound,
+  Mail,
 } from "lucide-react";
 import { OrethaMark } from "@/components/ui/OrethaMark";
 import type { SetupPayload } from "@/components/setup/types";
@@ -49,6 +50,7 @@ const STEP_META = [
   { icon: UserRound, title: "About you" },
   { icon: Scale, title: "House rules" },
   { icon: UsersRound, title: "Your crew" },
+  { icon: Mail, title: "Your mailroom" },
 ];
 
 export function SetupWizard() {
@@ -56,6 +58,8 @@ export function SetupWizard() {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusLabel, setStatusLabel] = useState<string | null>(null);
+  const [mailAddress, setMailAddress] = useState<string | null>(null);
 
   const [form, setForm] = useState<SetupPayload>({
     agentName: "",
@@ -68,6 +72,7 @@ export function SetupWizard() {
     userFirstName: "",
     userWork: "",
     userInterests: [],
+    mailboxApiKey: null,
   });
 
   const set = <K extends keyof SetupPayload>(key: K, value: SetupPayload[K]) =>
@@ -88,19 +93,47 @@ export function SetupWizard() {
     }
   }, []);
 
-  async function finish() {
+  async function provisionMailbox(apiKey: string) {
+    const res = await fetch("/api/mail/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok)
+      return { ok: false as const, error: data?.error ?? "AgentMail rejected that key." };
+    return { ok: true as const, address: String(data.address ?? "") };
+  }
+
+  async function finish(skipMail = false) {
     setBusy(true);
     setError(null);
     try {
+      // Provision the mailroom inbox BEFORE setup so the agent card is
+      // born with her inbox address on it.
+      if (!skipMail && form.mailboxApiKey) {
+        setStatusLabel("Provisioning your mailroom…");
+        const r = await provisionMailbox(form.mailboxApiKey);
+        if (!r.ok) {
+          setError(r.error);
+          setBusy(false);
+          setStatusLabel(null);
+          return;
+        }
+        setMailAddress(r.address ?? null);
+      }
+      setStatusLabel("Writing her files…");
+      const { mailboxApiKey: _drop, ...rest } = form;
       const res = await fetch("/api/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, timezone: tz }),
+        body: JSON.stringify({ ...rest, timezone: tz }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         setError(data?.error ?? "Setup couldn't be saved. Try again.");
         setBusy(false);
+        setStatusLabel(null);
         return;
       }
       router.replace("/hub");
@@ -108,6 +141,7 @@ export function SetupWizard() {
     } catch {
       setError("Network hiccup. Try again.");
       setBusy(false);
+      setStatusLabel(null);
     }
   }
 
@@ -312,12 +346,59 @@ export function SetupWizard() {
             </div>
           )}
 
+          {/* Step 6 — Mailroom (final) */}
+          {step === 5 && (
+            <div className="flex flex-1 flex-col gap-5">
+              <div>
+                <h1 className="font-display text-[24px] font-bold text-cream">
+                  Give {previewName} her own inbox.
+                </h1>
+                <p className="mt-1.5 text-[13px] text-sand">
+                  With an AgentMail key, she gets a real email address of her
+                  own — new mail gets triaged onto your Task Board
+                  automatically, and she can send on your behalf.
+                </p>
+              </div>
+              <p className="text-[13px] text-sand">
+                Create a key at{" "}
+                <a
+                  href="https://www.agentmail.to"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-gold underline decoration-gold/40"
+                >
+                  agentmail.to
+                </a>{" "}
+                — it stays encrypted on this device, and she gets her own
+                address, not yours.
+              </p>
+              <input
+                value={form.mailboxApiKey ?? ""}
+                onChange={(e) => set("mailboxApiKey", e.target.value.trim())}
+                placeholder="am_…"
+                spellCheck={false}
+                className={inputCls}
+              />
+              {mailAddress && (
+                <p className="rounded-[12px] border border-complete/30 bg-complete/10 px-3.5 py-2.5 text-[12.5px] text-complete">
+                  Connected: {mailAddress}
+                </p>
+              )}
+              <button
+                onClick={() => set("mailboxApiKey", null)}
+                className="self-start text-[12.5px] text-clay underline decoration-white/20"
+              >
+                Skip for now — she can do email later
+              </button>
+            </div>
+          )}
+
           {/* Step 5 — Crew + ready */}
           {step === 4 && (
             <div className="flex flex-1 flex-col">
               <div>
                 <h1 className="font-display text-[24px] font-bold text-cream">
-                  Last thing — the crew.
+                  Now — the crew around her.
                 </h1>
                 <p className="mt-1.5 text-[13px] text-sand">
                   Specialist agents {previewName} can delegate to. You can add
@@ -375,7 +456,7 @@ export function SetupWizard() {
       )}
 
       <div className="pt-5">
-        {step < 4 ? (
+        {step < STEP_META.length - 1 ? (
           <button
             onClick={() => setStep((s) => s + 1)}
             className="flex h-13 w-full items-center justify-center gap-2 rounded-[16px] bg-gradient-to-r from-gold to-violet font-display text-[16px] font-semibold text-canvas transition active:scale-[0.98]"
@@ -384,12 +465,12 @@ export function SetupWizard() {
           </button>
         ) : (
           <button
-            onClick={finish}
+            onClick={() => finish()}
             disabled={busy}
             className="flex h-13 w-full items-center justify-center gap-2 rounded-[16px] bg-gradient-to-r from-gold to-violet font-display text-[16px] font-semibold text-canvas transition active:scale-[0.98] disabled:opacity-50"
           >
             {busy
-              ? "Writing her files…"
+              ? (statusLabel ?? "Writing her files…")
               : `Bring ${previewName} home`}
             <Sparkles size={16} />
           </button>

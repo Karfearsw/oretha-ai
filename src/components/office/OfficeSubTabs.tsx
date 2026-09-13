@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, KanbanSquare, Activity } from "lucide-react";
+import { Home, Users, KanbanSquare, Activity, Mail } from "lucide-react";
 
 const SUB_TABS = [
   { href: "/office", label: "Home", icon: Home, exact: true },
+  { href: "/office/inbox", label: "Inbox", icon: Mail, exact: false },
   { href: "/office/directory", label: "Directory", icon: Users },
   { href: "/office/board", label: "Board", icon: KanbanSquare },
   { href: "/office/pulse", label: "Pulse", icon: Activity },

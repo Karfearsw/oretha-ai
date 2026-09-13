@@ -12,14 +12,34 @@
  * Meta Model API (Muse Spark): base URL https://api.meta.ai/v1, key from
  * dev.meta.ai (format `LLM|…|…`), model muse-spark-1.3. OpenAI-compatible,
  * but it is a reasoning model that applies `system` content at the
- * `developer` level and rejects `stop`/`logit_bias` — we map roles
- * accordingly and never send those parameters.
+ * `developer` level, rejects `stop`/`logit_bias`, and only supports
+ * `tool_choice: "auto"` — we map roles accordingly and never send the
+ * unsupported parameters.
+ *
+ * Tool calling follows the Meta cookbook pattern: define tools as JSON
+ * schemas; when the model returns finish_reason="tool_calls", the caller
+ * executes each call and appends the assistant message + one `tool`
+ * message per tool_call_id, looping until the model answers in text.
  */
 
+import type { ToolSpec } from "@/lib/tools";
+
 export interface LlmMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  tool_call_id?: string;
+  tool_calls?: LlmToolCall[];
 }
+
+export interface LlmToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export type StreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "tool_calls"; calls: LlmToolCall[] };
 
 interface LlmConfig {
   provider: "openai" | "anthropic" | "meta";
@@ -55,6 +75,15 @@ function config(): LlmConfig {
   return { provider, apiKey: process.env.LLM_API_KEY ?? "", baseUrl, model };
 }
 
+export function llmConfigured(): boolean {
+  return config().apiKey.trim().length > 0;
+}
+
+/** Tool calling is supported on OpenAI-compatible providers (incl. Meta). */
+export function toolCallSupported(): boolean {
+  return config().provider !== "anthropic";
+}
+
 /**
  * Meta Model API (Muse Spark) treats `system` content at the `developer`
  * level — map our system messages to the `developer` role, which is the
@@ -62,15 +91,11 @@ function config(): LlmConfig {
  */
 function mapRolesForMeta(
   messages: LlmMessage[],
-): { role: "developer" | "user" | "assistant"; content: string }[] {
+): { role: "developer" | "user" | "assistant" | "tool"; content: string; tool_call_id?: string; tool_calls?: LlmToolCall[] }[] {
   return messages.map((m) => ({
+    ...m,
     role: m.role === "system" ? "developer" : m.role,
-    content: m.content,
   }));
-}
-
-export function llmConfigured(): boolean {
-  return config().apiKey.trim().length > 0;
 }
 
 /** Split system messages out — Anthropic takes `system` as a top-level field. */
@@ -116,14 +141,21 @@ async function* parseSse(res: Response): AsyncGenerator<string> {
   }
 }
 
-/** Stream chat completion deltas as they arrive. */
-export async function* streamChat(
+/**
+ * Stream a chat completion, yielding text deltas as they arrive and a
+ * final `tool_calls` event if the model wants tools executed. Tool
+ * execution itself lives in the caller (see /api/chat) — this adapter
+ * only speaks the wire format.
+ */
+export async function* streamChatWithTools(
   messages: LlmMessage[],
-): AsyncGenerator<string> {
+  tools?: ToolSpec[],
+): AsyncGenerator<StreamEvent> {
   const { provider, apiKey, baseUrl, model } = config();
   if (!apiKey.trim()) throw new Error("LLM_NOT_CONFIGURED");
 
   if (provider === "anthropic") {
+    // Tool calling not implemented for Anthropic — stream text only.
     const { system, rest } = splitSystem(messages);
     const res = await fetch(`${baseUrl}/v1/messages`, {
       method: "POST",
@@ -149,7 +181,7 @@ export async function* streamChat(
           delta?: { text?: string };
         };
         if (json.type === "content_block_delta" && json.delta?.text)
-          yield json.delta.text;
+          yield { type: "text", delta: json.delta.text };
       } catch {
         /* keep-alive or partial frame — skip */
       }
@@ -165,24 +197,72 @@ export async function* streamChat(
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, messages: wire, stream: true }),
+    body: JSON.stringify({
+      model,
+      messages: wire,
+      stream: true,
+      // tool_choice "auto" is the only supported value — omit and let the
+      // model decide (explicit "auto" is also fine, but omitting is safest).
+      ...(tools && tools.length > 0 ? { tools } : {}),
+    }),
   });
   if (!res.ok)
     throw new Error(`LLM ${res.status}: ${await safeErrorText(res)}`);
+
+  // Accumulate streamed tool-call fragments by index.
+  const pending = new Map<number, { id: string; name: string; args: string }>();
   for await (const data of parseSse(res)) {
     try {
       const json = JSON.parse(data) as {
-        choices?: { delta?: { content?: string } }[];
+        choices?: {
+          delta?: {
+            content?: string;
+            tool_calls?: {
+              index: number;
+              id?: string;
+              function?: { name?: string; arguments?: string };
+            }[];
+          };
+        }[];
       };
-      const delta = json.choices?.[0]?.delta?.content;
-      if (delta) yield delta;
+      const choice = json.choices?.[0];
+      if (!choice) continue;
+      if (choice.delta?.content)
+        yield { type: "text", delta: choice.delta.content };
+      for (const tc of choice.delta?.tool_calls ?? []) {
+        const cur = pending.get(tc.index) ?? { id: "", name: "", args: "" };
+        if (tc.id) cur.id = tc.id;
+        if (tc.function?.name) cur.name += tc.function.name;
+        if (tc.function?.arguments) cur.args += tc.function.arguments;
+        pending.set(tc.index, cur);
+      }
     } catch {
       /* skip malformed frame */
     }
   }
+
+  if (pending.size > 0) {
+    const calls: LlmToolCall[] = [...pending.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, c]) => ({
+        id: c.id || `call_${c.name}`,
+        name: c.name,
+        arguments: c.args || "{}",
+      }));
+    yield { type: "tool_calls", calls };
+  }
 }
 
-/** Single-shot completion (used by the memory summarizer). */
+/** Text-only convenience wrapper over streamChatWithTools. */
+export async function* streamChat(
+  messages: LlmMessage[],
+): AsyncGenerator<string> {
+  for await (const ev of streamChatWithTools(messages)) {
+    if (ev.type === "text") yield ev.delta;
+  }
+}
+
+/** Single-shot completion (used by the memory summarizer + mail triage). */
 export async function chatComplete(
   messages: LlmMessage[],
   opts?: { maxTokens?: number; temperature?: number },

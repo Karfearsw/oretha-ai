@@ -43,11 +43,11 @@ const NAV_CARDS = [
     tint: "text-complete",
   },
   {
-    href: "/chats",
+    href: "/office/inbox",
     icon: Inbox,
     title: "Inbox & Automations",
-    desc: "Steward's triage and standing workflows",
-    count: "3 new",
+    desc: "Agent mailroom — email becomes tasks, drafts, filings",
+    count: "Live",
     tint: "text-[#38bdf8]",
   },
 ];

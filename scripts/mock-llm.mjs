@@ -4,8 +4,11 @@
  *   LLM_BASE_URL="http://localhost:4000/v1"
  *   LLM_API_KEY="mock"  LLM_MODEL="mock-1"
  *
- * Chat calls stream a fixed reply; memory-extraction calls (stream=false,
- * max_tokens=300) return a durable-fact line so you can watch MEMORY.md grow.
+ * Behavior:
+ *  - streaming + tools provided  → emits a check_mail tool_call on
+ *    mail-related prompts, otherwise streams the canned reply.
+ *  - streaming, no tools         → streams the canned reply.
+ *  - non-streaming               → memory-extraction / triage canned JSON.
  */
 import http from "node:http";
 
@@ -36,6 +39,33 @@ function sseChunks(res, text) {
   }, 40);
 }
 
+function sseToolCall(res, toolName) {
+  res.writeHead(200, {
+    "content-type": "text/event-stream",
+    "cache-control": "no-store",
+  });
+  const frames = [
+    { delta: { tool_calls: [{ index: 0, id: "call_mock_1", function: { name: toolName, arguments: "" } }] } },
+    { delta: { tool_calls: [{ index: 0, function: { arguments: "{}" } }] } },
+  ];
+  let i = 0;
+  const timer = setInterval(() => {
+    if (i >= frames.length) {
+      res.write("data: [DONE]\n\n");
+      res.end();
+      clearInterval(timer);
+      return;
+    }
+    const payload = {
+      id: "mock",
+      object: "chat.completion.chunk",
+      choices: [{ index: 0, ...frames[i] }],
+    };
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    i++;
+  }, 40);
+}
+
 const server = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -45,10 +75,47 @@ const server = http.createServer((req, res) => {
       parsed = JSON.parse(body);
     } catch {}
 
+    const wantsTools = Array.isArray(parsed.tools) && parsed.tools.length > 0;
+    const lastUser = [...(parsed.messages ?? [])]
+      .reverse()
+      .find((m) => m.role === "user" || m.role === "developer");
+    const lastContent = String(lastUser?.content ?? "");
+    const sawToolResult = (parsed.messages ?? []).some(
+      (m) => m.role === "tool",
+    );
+
+    // Tool call? Only when tools are offered and the user mentions mail.
+    if (wantsTools && !sawToolResult && /mail|inbox|email/i.test(lastContent)) {
+      sseToolCall(res, "check_mail");
+      return;
+    }
+
     if (parsed.stream) {
       sseChunks(
         res,
-        "Understood — the mock is answering so you can test the full loop. Wire a real key whenever you're ready and I'll sound like myself.",
+        sawToolResult
+          ? "Checked the mailroom — the mock sync ran and any new email is triaged on the board."
+          : "Understood — the mock is answering so you can test the full loop. Wire a real key whenever you're ready and I'll sound like myself.",
+      );
+      return;
+    }
+
+    // mail triage calls ask for an action verdict — answer with a task.
+    // the request body is JSON, so quotes in the prompt are escaped: \"action\"
+    if (body.includes("task_title") && body.includes('\\"action\\"')) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content:
+                  '{"action":"task","task_title":"Pay invoice #4471","lane":"In Progress","priority":"high","due_days":3,"reason":"invoice with deadline"}',
+              },
+            },
+          ],
+        }),
       );
       return;
     }

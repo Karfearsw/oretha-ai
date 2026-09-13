@@ -26,6 +26,8 @@ export async function POST(req: Request) {
       userInterests: Array.isArray(body.userInterests)
         ? body.userInterests.slice(0, 12).map((i) => String(i).trim().slice(0, 40)).filter(Boolean)
         : [],
+      // The mailbox key never enters agent files — it's consumed by /api/mail/connect.
+      mailboxApiKey: null,
     };
 
     const files = generateAgentFiles(payload);

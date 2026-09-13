@@ -10,6 +10,7 @@ Uncensored, Black-powered AI OS for work and creation — mobile-first. Chats, a
 - **Auth**: email + password (bcrypt), JWT session cookie (jose), httpOnly
 - **LLM**: provider-agnostic streaming (Meta Model API / Muse Spark by default, or any OpenAI-compatible API or Anthropic)
 - **Memory**: background summarization merges durable facts into `MEMORY.md` after each exchange
+- **Mailroom**: each agent gets her own AgentMail inbox — inbound email is triaged (task / reply / archive) onto the Task Board; chat tools (`check_mail`, `list_tasks`) follow the OpenAI/Meta function-calling loop
 - framer-motion, lucide-react
 
 ## Getting started
