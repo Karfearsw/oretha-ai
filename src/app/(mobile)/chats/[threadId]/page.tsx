@@ -18,7 +18,13 @@ import {
   FileText,
   ChevronRight,
   Sparkles,
+  Mail,
+  NotebookPen,
+  SquarePlus,
+  KanbanSquare,
+  Loader2,
 } from "lucide-react";
+import { Sheet } from "@/components/ui/Sheet";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import type { SegmentItem } from "@/components/ui/SegmentedControl";
 import { FileSheet } from "@/components/ui/FileSheet";
@@ -30,6 +36,22 @@ import { useSessionUser } from "@/components/layout/AppShell";
 import type { ChatMessage } from "@/lib/types";
 
 type Seg = "activity" | "guardrails" | "memory" | "files";
+
+/* Minimal Web Speech API types (not in the standard DOM lib). */
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start(): void;
+  stop(): void;
+  onresult:
+    | ((e: {
+        results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>;
+      }) => void)
+    | null;
+  onend: (() => void) | null;
+  onerror: ((e: { error?: string }) => void) | null;
+}
 
 const SEGMENTS: SegmentItem<Seg>[] = [
   { value: "activity", label: "Activity", icon: List },
@@ -69,8 +91,13 @@ export default function ChatRoomPage() {
   const [llmReady, setLlmReady] = useState<boolean | null>(null);
   const [fileOpen, setFileOpen] = useState<string | null>(null);
   const [dbFiles, setDbFiles] = useState<Record<string, string>>({});
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  const [mailBusy, setMailBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const recRef = useRef<SpeechRecognitionLike | null>(null);
 
   // Deep-link handoff (e.g. Media Lab "Send to the crew"): prefill the composer.
   useEffect(() => {
@@ -294,6 +321,109 @@ export default function ChatRoomPage() {
       });
   };
 
+  /* ── Voice input (Web Speech API) ─────────────────────────────
+   * Real speech-to-text where the browser supports it; honest
+   * guidance where it doesn't. Transcripts land in the composer. */
+  const toggleVoice = () => {
+    if (listening) {
+      recRef.current?.stop();
+      return;
+    }
+    const w = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionLike;
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+    };
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!Ctor) {
+      setVoiceNote(
+        "Voice input needs a Chromium browser (Chrome, Edge) or Safari — this browser doesn't expose speech recognition.",
+      );
+      setTimeout(() => setVoiceNote(null), 6000);
+      return;
+    }
+    const rec = new Ctor();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.onresult = (e) => {
+      let final = "";
+      let interim = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) final += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      setInput(
+        (prev) =>
+          (prev ? `${prev.trimEnd()} ` : "") + (final || interim).trim(),
+      );
+    };
+    rec.onend = () => {
+      setListening(false);
+      recRef.current = null;
+    };
+    rec.onerror = (e) => {
+      setListening(false);
+      recRef.current = null;
+      const kind = e?.error;
+      setVoiceNote(
+        kind === "not-allowed" || kind === "service-not-allowed"
+          ? "Microphone access is blocked — allow it in the browser's site settings and try again."
+          : kind === "no-speech"
+            ? null
+            : "Voice input hit a snag — try again, or just type it.",
+      );
+      if (kind !== "no-speech") setTimeout(() => setVoiceNote(null), 6000);
+    };
+    recRef.current = rec;
+    setListening(true);
+    rec.start();
+  };
+
+  /* Quick actions — every one wired to a production system. */
+  const runMailSync = async () => {
+    if (mailBusy) return;
+    setMailBusy(true);
+    try {
+      const r = await fetch("/api/mail/sync", { method: "POST" });
+      const d = await r.json().catch(() => null);
+      const res = d?.results?.[0];
+      setVoiceNote(
+        res?.error
+          ? `Mailroom hit a snag: ${String(res.error).slice(0, 120)}`
+          : `Mailroom checked — ${res?.fetched ?? 0} new, ${res?.triaged ?? 0} triaged, ${res?.tasks ?? 0} task(s) on the board.`,
+      );
+    } catch {
+      setVoiceNote("Mailroom check failed — network hiccup. Try again.");
+    } finally {
+      setMailBusy(false);
+      setTimeout(() => setVoiceNote(null), 6000);
+    }
+  };
+
+  const saveToMemory = () => {
+    const text = input.trim();
+    if (!text) {
+      setVoiceNote("Type the fact first — I'll pin it to her memory.");
+      setTimeout(() => setVoiceNote(null), 5000);
+      return;
+    }
+    const current =
+      dbFiles["MEMORY.md"] ??
+      fileContent("MEMORY.md") ??
+      "# Memory\n\n## Facts\n";
+    const updated = `${current.trimEnd()}\n- ${text} (pinned ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })})\n`;
+    setDbFiles((f) => ({ ...f, "MEMORY.md": updated }));
+    fetch("/api/agent-files", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "MEMORY.md", content: updated }),
+    });
+    setInput("");
+    setVoiceNote("Pinned to her memory — she'll carry it from now on.");
+    setTimeout(() => setVoiceNote(null), 5000);
+  };
+
   const fileContent = (name: string) =>
     dbFiles[name] ??
     MEMORY_FILES.find((f) => f.name === name)?.content ??
@@ -459,19 +589,33 @@ export default function ChatRoomPage() {
             No LLM key on the server yet — add <span className="font-mono">LLM_API_KEY</span> to go live.
           </p>
         )}
+        {voiceNote && (
+          <p className="mb-2 rounded-[12px] border border-violet/30 bg-violet/10 px-3 py-2 text-center text-[11.5px] leading-snug text-[#c4b5fd]">
+            {voiceNote}
+          </p>
+        )}
         <div className="flex items-center gap-2 rounded-full border border-white/10 bg-elevated py-1.5 pl-3 pr-1.5">
-          <button aria-label="Add attachment" className="text-sand">
+          <button
+            aria-label="Quick actions"
+            onClick={() => setPlusOpen(true)}
+            className="text-sand transition active:scale-90"
+          >
             <Plus size={20} />
           </button>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder={`Message ${agentName}…`}
+            placeholder={listening ? "Listening…" : `Message ${agentName}…`}
             className="min-w-0 flex-1 bg-transparent text-[15px] text-cream outline-none placeholder:text-clay"
           />
           {input.trim() === "" && (
-            <button aria-label="Voice message" className="px-1 text-sand">
+            <button
+              aria-label={listening ? "Stop listening" : "Voice message"}
+              aria-pressed={listening}
+              onClick={toggleVoice}
+              className={`px-1 transition active:scale-90 ${listening ? "animate-pulse text-gold" : "text-sand"}`}
+            >
               <Mic size={20} />
             </button>
           )}
@@ -489,6 +633,77 @@ export default function ChatRoomPage() {
           </motion.button>
         </div>
       </div>
+
+      {/* Quick-actions sheet (the "+" button) */}
+      <Sheet open={plusOpen} onClose={() => setPlusOpen(false)} title="Quick actions">
+        <div className="flex flex-col gap-2.5 pb-4">
+          <button
+            onClick={() => {
+              setPlusOpen(false);
+              runMailSync();
+            }}
+            className="flex items-center gap-3.5 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/15 text-gold">
+              {mailBusy ? <Loader2 size={18} className="animate-spin" /> : <Mail size={18} />}
+            </span>
+            <span>
+              <span className="block text-[14.5px] font-semibold text-cream">Check the mailroom</span>
+              <span className="block text-[12px] text-sand">Sync inbox now, triage new email to the board</span>
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setPlusOpen(false);
+              saveToMemory();
+            }}
+            className="flex items-center gap-3.5 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-violet/20 text-[#c4b5fd]">
+              <NotebookPen size={18} />
+            </span>
+            <span>
+              <span className="block text-[14.5px] font-semibold text-cream">Pin to her memory</span>
+              <span className="block text-[12px] text-sand">Save the typed line into MEMORY.md permanently</span>
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setPlusOpen(false);
+              router.push("/office/board");
+            }}
+            className="flex items-center gap-3.5 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-cream">
+              <KanbanSquare size={18} />
+            </span>
+            <span>
+              <span className="block text-[14.5px] font-semibold text-cream">Open task board</span>
+              <span className="block text-[12px] text-sand">See what the crew picked up from email</span>
+            </span>
+          </button>
+
+          <button
+            onClick={async () => {
+              setPlusOpen(false);
+              const r = await fetch("/api/threads", { method: "POST" });
+              const d = await r.json().catch(() => null);
+              if (d?.thread?.id) router.push(`/chats/${d.thread.id}`);
+            }}
+            className="flex items-center gap-3.5 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-cream">
+              <SquarePlus size={18} />
+            </span>
+            <span>
+              <span className="block text-[14.5px] font-semibold text-cream">New chat</span>
+              <span className="block text-[12px] text-sand">Fresh thread, same memory</span>
+            </span>
+          </button>
+        </div>
+      </Sheet>
 
       <FileSheet
         open={fileOpen !== null}
