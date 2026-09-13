@@ -23,11 +23,8 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import type { SegmentItem } from "@/components/ui/SegmentedControl";
 import { FileSheet } from "@/components/ui/FileSheet";
 import { AgentRunRow } from "@/components/hub/AgentRunRow";
-import { AgentAvatar } from "@/components/ui/Avatar";
 import { OrethaMark } from "@/components/ui/OrethaMark";
 import { Chip } from "@/components/ui/Chip";
-import { agentById } from "@/lib/mock/agents";
-import { RUNS, THREADS } from "@/lib/mock/threads";
 import { generateAgentFiles } from "@/lib/agentFiles";
 import { useSessionUser } from "@/components/layout/AppShell";
 import type { ChatMessage } from "@/lib/types";
@@ -58,11 +55,10 @@ export default function ChatRoomPage() {
   const params = useParams<{ threadId: string }>();
   const router = useRouter();
   const threadId = params.threadId;
-  const thread = THREADS.find((t) => t.id === threadId) ?? THREADS[0];
-  const lead = agentById(thread.agentIds[0]) ?? agentById("oretha")!;
+  // Real thread from the DB; unknown slugs fall back to the newest real thread.
+  const [threadTitle, setThreadTitle] = useState<string | null>(null);
   const sessionUser = useSessionUser();
-  const agentName =
-    lead.id === "oretha" ? sessionUser?.agentName || "Oretha" : lead.name;
+  const agentName = sessionUser?.agentName || "Oretha";
 
   const [seg, setSeg] = useState<Seg>("activity");
   const [messages, setMessages] = useState<UiMessage[]>([]);
@@ -75,6 +71,39 @@ export default function ChatRoomPage() {
   const [dbFiles, setDbFiles] = useState<Record<string, string>>({});
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Deep-link handoff (e.g. Media Lab "Send to the crew"): prefill the composer.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("prompt");
+    if (q) {
+      setInput(q);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
+  // Load the real thread (title) — and if the slug is unknown, bounce to the newest one.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/threads")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d?.threads) return;
+        const found = d.threads.find(
+          (t: { id: string; slug: string; title: string }) =>
+            t.id === threadId || t.slug === threadId,
+        );
+        if (found) {
+          if (found.id !== threadId) router.replace(`/chats/${found.id}`);
+          setThreadTitle(found.title);
+        } else if (d.threads.length > 0) {
+          router.replace(`/chats/${d.threads[0].id}`);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [threadId, router]);
 
   // templates from her setup answers (fallback until DB files load)
   const MEMORY_FILES = useMemo(() => {
@@ -283,19 +312,15 @@ export default function ChatRoomPage() {
             <X size={20} />
           </Link>
           <div className="flex flex-col items-center gap-1.5">
-            {lead.id === "oretha" ? (
-              <OrethaMark size={52} />
-            ) : (
-              <AgentAvatar agentId={lead.id} name={lead.name} size={52} status={lead.status} />
-            )}
+            <OrethaMark size={52} />
             <span className="rounded-full bg-elevated px-3.5 py-1.5 text-center">
               <span className="block font-display text-[13px] font-bold leading-tight text-cream">
-                {agentName}
-              </span>
-              <span className="block text-[11.5px] leading-tight text-sand">
-                {busy ? "is working" : "is ready"}
-              </span>
+              {threadTitle ?? agentName}
             </span>
+            <span className="block text-[11.5px] leading-tight text-sand">
+              {busy ? "is working" : "is ready"}
+            </span>
+          </span>
           </div>
           <button
             aria-label="Chat options"
@@ -347,10 +372,7 @@ export default function ChatRoomPage() {
               />
             )}
             {busy && streaming === "" && <TypingDots />}
-            {seg === "activity" &&
-              RUNS.filter((r) => r.status === "running").map((run) => (
-                <AgentRunRow key={run.id} run={run} />
-              ))}
+            {seg === "activity" && null}
           </div>
         )}
 

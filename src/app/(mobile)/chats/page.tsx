@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, Plus, Pin } from "lucide-react";
@@ -10,30 +10,55 @@ import { Sheet } from "@/components/ui/Sheet";
 import { Button } from "@/components/ui/Button";
 import { AgentDetailSheet } from "@/components/chats/AgentDetailSheet";
 import { AGENTS } from "@/lib/mock/agents";
-import { THREADS } from "@/lib/mock/threads";
-import type { ThreadCategory, Agent } from "@/lib/types";
+import type { Agent } from "@/lib/types";
 
-const FILTERS: ("All" | ThreadCategory)[] = [
-  "All",
-  "Work",
-  "Code",
-  "Real Estate",
-  "Media",
-  "Personal",
-];
+interface ThreadRow {
+  id: string;
+  slug: string;
+  title: string;
+  updatedAt: string;
+  preview: string;
+}
+
+function timeAgo(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  return `${Math.floor(hrs / 24)}d`;
+}
 
 export default function ChatsPage() {
   const router = useRouter();
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
   const [detail, setDetail] = useState<Agent | null>(null);
+  const [threads, setThreads] = useState<ThreadRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
 
-  const threads = useMemo(
-    () =>
-      filter === "All"
-        ? THREADS
-        : THREADS.filter((t) => t.category === filter),
-    [filter],
-  );
+  const load = useCallback(async () => {
+    const res = await fetch("/api/threads");
+    if (res.ok) setThreads((await res.json()).threads ?? []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function newChat() {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const res = await fetch("/api/threads", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        router.push(`/chats/${data.thread.id}`);
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
 
   const recent = AGENTS.filter((a) => a.pinned);
 
@@ -50,61 +75,51 @@ export default function ChatsPage() {
           </button>
           <button
             aria-label="New chat"
-            onClick={() => router.push("/chats/t1")}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gold text-canvas"
+            onClick={newChat}
+            disabled={creating}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gold text-canvas disabled:opacity-60"
           >
             <Plus size={18} />
           </button>
         </div>
       </header>
 
-      <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4">
-        {FILTERS.map((f) => (
-          <button key={f} onClick={() => setFilter(f)}>
-            <Chip tone={filter === f ? "gold" : "outline"}>{f}</Chip>
-          </button>
-        ))}
-      </div>
-
       <div className="mt-4 flex flex-col divide-y divide-white/6">
-        {threads.map((t) => (
-          <Link
-            key={t.id}
-            href={`/chats/${t.id}`}
-            className="flex items-center gap-3 py-3 transition active:bg-white/4"
-          >
-            <span className="relative">
-              <AgentAvatar
-                agentId={t.agentIds[0]}
-                name={t.agentIds[0]}
-                size={46}
-              />
-              {t.running && (
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-canvas">
-                  <span className="anim-pulse-dot h-2 w-2 rounded-full bg-gold" />
-                </span>
-              )}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center justify-between gap-2">
-                <span className="truncate font-display text-[15px] font-bold text-cream">
-                  {t.title}
-                </span>
-                <span className="shrink-0 text-[11px] text-clay">{t.time}</span>
+        {loading ? (
+          <p className="py-10 text-center text-[13px] text-clay">Loading…</p>
+        ) : threads.length === 0 ? (
+          <div className="rounded-[16px] border border-dashed border-white/10 p-6 text-center">
+            <p className="text-[13px] leading-snug text-sand">
+              No conversations yet. Say something — she already knows your
+              files, your rules, and your memory.
+            </p>
+          </div>
+        ) : (
+          threads.map((t) => (
+            <Link
+              key={t.id}
+              href={`/chats/${t.id}`}
+              className="flex items-center gap-3 py-3 transition active:bg-white/4"
+            >
+              <span className="relative">
+                <AgentAvatar agentId="oretha" name="Oretha" size={46} />
               </span>
-              <span className="mt-0.5 flex items-center justify-between gap-2">
-                <span className="truncate text-[13px] text-sand">
-                  {t.preview}
-                </span>
-                {t.unread ? (
-                  <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-gold px-1.5 text-[11px] font-bold text-canvas">
-                    {t.unread}
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="truncate font-display text-[15px] font-bold text-cream">
+                    {t.title}
                   </span>
-                ) : null}
+                  <span className="shrink-0 text-[11px] text-clay">
+                    {timeAgo(t.updatedAt)}
+                  </span>
+                </span>
+                <span className="mt-0.5 block truncate text-[13px] text-sand">
+                  {t.preview || "New conversation"}
+                </span>
               </span>
-            </span>
-          </Link>
-        ))}
+            </Link>
+          ))
+        )}
       </div>
 
       <section aria-label="Recent agents" className="mt-5">
@@ -156,11 +171,9 @@ export default function ChatsPage() {
                 </span>
               </button>
               <div className="flex shrink-0 flex-col items-end gap-1.5">
-                <Link href={`/chats/t1?agent=${a.id}`}>
-                  <Button size="sm" variant="primary">
-                    Launch
-                  </Button>
-                </Link>
+                <Button size="sm" variant="primary" onClick={newChat}>
+                  Launch
+                </Button>
                 <span className="flex items-center gap-1 text-[10.5px] text-clay">
                   <Pin size={10} className={a.pinned ? "text-gold" : ""} />
                   {a.pinned ? "Pinned" : "Pin"}
@@ -172,17 +185,17 @@ export default function ChatsPage() {
       </section>
 
       <div className="mt-5 mb-2">
-        <Link
-          href="/chats/t1"
-          className="flex items-center gap-3 rounded-full border border-white/10 bg-elevated px-4 py-3.5 text-[15px] text-clay"
+        <button
+          onClick={newChat}
+          className="flex w-full items-center gap-3 rounded-full border border-white/10 bg-elevated px-4 py-3.5 text-[15px] text-clay"
         >
           <Plus size={18} />
-          Message Oretha…
-        </Link>
+          Message {detail?.name ?? "Oretha"}…
+        </button>
       </div>
 
       <Sheet open={detail !== null} onClose={() => setDetail(null)} title={detail?.name}>
-        {detail && <AgentDetailSheet agent={detail} onLaunch={() => router.push("/chats/t1")} />}
+        {detail && <AgentDetailSheet agent={detail} onLaunch={newChat} />}
       </Sheet>
     </main>
   );

@@ -34,6 +34,7 @@ model User {
   agentFiles AgentFile[]
   mailboxes  Mailbox[]
   tasks      Task[]
+  workflows  Workflow[]
 }
 
 model AgentFile {
@@ -107,7 +108,7 @@ model Mailbox {
 model EmailMessage {
   id         String    @id @default(cuid())
   mailboxId  String
-  remoteId   String    @unique
+  remoteId   String
   fromAddr   String
   subject    String
   preview    String    @default("")
@@ -117,6 +118,8 @@ model EmailMessage {
   taskTitle  String?
   mailbox    Mailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
   task       Task?
+
+  @@unique([mailboxId, remoteId])
 }
 
 /* Task board rows — surfaced from email triage, chat, or manual entry. */
@@ -135,4 +138,33 @@ model Task {
   updatedAt  DateTime      @updatedAt
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   email      EmailMessage? @relation(fields: [emailId], references: [id])
+}
+
+/* ── Workflows: scheduled automations (run by the sweep) ───────────── */
+
+model Workflow {
+  id        String        @id @default(cuid())
+  userId    String
+  name      String
+  action    String        @default("mail_triage")
+  prompt    String?
+  schedule  String        @default("daily")
+  enabled   Boolean       @default(true)
+  lastRunAt DateTime?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs      WorkflowRun[]
+}
+
+model WorkflowRun {
+  id         String   @id @default(cuid())
+  workflowId String
+  status     String   @default("running")
+  summary    String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId, createdAt])
 }

@@ -15,7 +15,6 @@ import { AgentAvatar } from "@/components/ui/Avatar";
 import { Chip } from "@/components/ui/Chip";
 import { Sheet } from "@/components/ui/Sheet";
 import { Button } from "@/components/ui/Button";
-import { TASKS } from "@/lib/mock/office";
 import { agentById } from "@/lib/mock/agents";
 import type { Task, TaskLane, TaskSource } from "@/lib/types";
 
@@ -61,7 +60,8 @@ export default function BoardPage() {
     };
   }, []);
 
-  const allTasks: Task[] = [...TASKS, ...apiTasks];
+  // Real rows only — email triage + chat-created tasks, all from the DB.
+  const allTasks: Task[] = apiTasks;
 
   return (
     <main className="pad-safe-top flex flex-col px-4 pt-2">
