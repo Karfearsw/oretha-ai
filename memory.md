@@ -60,3 +60,11 @@
 - Schema fix: EmailMessage.remoteId unique per mailbox (composite @@unique) — AgentMail IDs are per-inbox.
 - Applied to Turso: 20260913154124_workflows + 20260913162000_email_remoteid_composite (7 migrations total).
 - E2E verified locally: signup -> setup -> inbox provision, vendor email -> sync -> LLM triage -> task, workflow create -> sweep -> run, chat tool loop, real pulse metrics.
+
+## Connectors (2026-09-13)
+
+- Real GitHub (PAT) + Linear (API key) connectors: live validation at connect, AES-256-GCM encrypted storage (Connector table), idempotent sync to Task board via remoteKey.
+- Email connector state derives from Mailbox (mailroom); OAuth-only platforms show Soon.
+- sync_connectors chat tool + connector_sync workflow action; office alerts show connector sync errors.
+- Env overrides for local mocks: GITHUB_API_BASE, LINEAR_API_BASE (scripts/mock-connectors.mjs on :4200). REMOVE BOTH FROM .env.local BEFORE RELYING ON LOCAL PROD TESTING; never set in Vercel.
+- Turso migration 20260913180000_connectors applied.
