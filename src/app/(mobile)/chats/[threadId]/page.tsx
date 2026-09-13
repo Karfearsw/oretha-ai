@@ -23,6 +23,11 @@ import {
   SquarePlus,
   KanbanSquare,
   Loader2,
+  Pencil,
+  Eraser,
+  Trash2,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -73,6 +78,15 @@ function nowLabel() {
     .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
+/* Speak a finished reply aloud (browser TTS). */
+function speakAloud(text: string) {
+  if (typeof speechSynthesis === "undefined" || !text.trim()) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text.slice(0, 600));
+  u.rate = 1.02;
+  speechSynthesis.speak(u);
+}
+
 export default function ChatRoomPage() {
   const params = useParams<{ threadId: string }>();
   const router = useRouter();
@@ -92,12 +106,18 @@ export default function ChatRoomPage() {
   const [fileOpen, setFileOpen] = useState<string | null>(null);
   const [dbFiles, setDbFiles] = useState<Record<string, string>>({});
   const [plusOpen, setPlusOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameText, setRenameText] = useState("");
+  const [speakReplies, setSpeakReplies] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceNote, setVoiceNote] = useState<string | null>(null);
   const [mailBusy, setMailBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
+  const speakRepliesRef = useRef(false);
+  speakRepliesRef.current = speakReplies;
 
   // Deep-link handoff (e.g. Media Lab "Send to the crew"): prefill the composer.
   useEffect(() => {
@@ -315,6 +335,7 @@ export default function ChatRoomPage() {
                 time: nowLabel(),
               },
             ]);
+            if (speakRepliesRef.current) speakAloud(current);
           }
           return null;
         });
@@ -424,6 +445,34 @@ export default function ChatRoomPage() {
     setTimeout(() => setVoiceNote(null), 5000);
   };
 
+  /* ── Chat options (the ⋯ header button) ───────────────────── */
+  const renameThread = async () => {
+    const title = renameText.trim();
+    if (!title) return;
+    setThreadTitle(title);
+    setRenaming(false);
+    setOptionsOpen(false);
+    await fetch(`/api/threads/${threadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+  };
+
+  const clearMessages = async () => {
+    setOptionsOpen(false);
+    setMessages([]);
+    await fetch(`/api/threads/${threadId}?messages=1`, { method: "DELETE" });
+    setVoiceNote("Conversation cleared — the chat stays, the history is gone.");
+    setTimeout(() => setVoiceNote(null), 5000);
+  };
+
+  const deleteThread = async () => {
+    setOptionsOpen(false);
+    await fetch(`/api/threads/${threadId}`, { method: "DELETE" });
+    router.push("/chats");
+  };
+
   const fileContent = (name: string) =>
     dbFiles[name] ??
     MEMORY_FILES.find((f) => f.name === name)?.content ??
@@ -454,7 +503,9 @@ export default function ChatRoomPage() {
           </div>
           <button
             aria-label="Chat options"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-elevated text-cream"
+            aria-expanded={optionsOpen}
+            onClick={() => setOptionsOpen(true)}
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-elevated text-cream transition active:scale-90"
           >
             <Ellipsis size={20} />
           </button>
@@ -700,6 +751,99 @@ export default function ChatRoomPage() {
             <span>
               <span className="block text-[14.5px] font-semibold text-cream">New chat</span>
               <span className="block text-[12px] text-sand">Fresh thread, same memory</span>
+            </span>
+          </button>
+        </div>
+      </Sheet>
+
+      {/* Chat options sheet (the ⋯ header button) */}
+      <Sheet open={optionsOpen} onClose={() => setOptionsOpen(false)} title="Chat options">
+        <div className="flex flex-col gap-2.5 pb-4">
+          {renaming ? (
+            <div className="flex flex-col gap-2 rounded-[16px] border border-gold/30 bg-gold/5 p-4">
+              <input
+                autoFocus
+                value={renameText}
+                onChange={(e) => setRenameText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && renameThread()}
+                placeholder="Chat name"
+                className="w-full rounded-[12px] border border-white/10 bg-canvas p-3 text-[15px] text-cream outline-none placeholder:text-clay"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={renameThread}
+                  className="flex-1 rounded-[12px] bg-gradient-to-br from-gold to-violet py-2.5 text-[13.5px] font-bold text-canvas"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setRenaming(false)}
+                  className="flex-1 rounded-[12px] border border-white/10 py-2.5 text-[13.5px] font-semibold text-sand"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                setRenameText(threadTitle ?? "");
+                setRenaming(true);
+              }}
+              className="flex items-center gap-3.5 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-cream">
+                <Pencil size={18} />
+              </span>
+              <span>
+                <span className="block text-[14.5px] font-semibold text-cream">Rename chat</span>
+                <span className="block text-[12px] text-sand">Give this thread a name you'll find later</span>
+              </span>
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              setSpeakReplies((s) => !s);
+              setOptionsOpen(false);
+            }}
+            className="flex items-center gap-3.5 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+          >
+            <span className={`flex h-10 w-10 items-center justify-center rounded-full ${speakReplies ? "bg-gold/15 text-gold" : "bg-white/10 text-cream"}`}>
+              {speakReplies ? <Volume2 size={18} /> : <VolumeX size={18} />}
+            </span>
+            <span className="flex-1">
+              <span className="block text-[14.5px] font-semibold text-cream">Speak replies aloud</span>
+              <span className="block text-[12px] text-sand">Read her answers with the browser's voice</span>
+            </span>
+            <span className={`h-6 w-10 rounded-full p-0.5 transition ${speakReplies ? "bg-gold" : "bg-white/15"}`}>
+              <span className={`block h-5 w-5 rounded-full bg-canvas transition ${speakReplies ? "translate-x-4" : ""}`} />
+            </span>
+          </button>
+
+          <button
+            onClick={clearMessages}
+            className="flex items-center gap-3.5 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-cream">
+              <Eraser size={18} />
+            </span>
+            <span>
+              <span className="block text-[14.5px] font-semibold text-cream">Clear conversation</span>
+              <span className="block text-[12px] text-sand">Wipe the history, keep the chat</span>
+            </span>
+          </button>
+
+          <button
+            onClick={deleteThread}
+            className="flex items-center gap-3.5 rounded-[16px] border border-alert/30 bg-alert/10 p-4 text-left transition active:scale-[0.98]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-alert/20 text-alert">
+              <Trash2 size={18} />
+            </span>
+            <span>
+              <span className="block text-[14.5px] font-semibold text-cream">Delete chat</span>
+              <span className="block text-[12px] text-sand">Gone for good — thread and history</span>
             </span>
           </button>
         </div>
