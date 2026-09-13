@@ -51,3 +51,12 @@
 - Chat tools: `src/lib/tools.ts` (check_mail, list_tasks) via `streamChatWithTools` in llm.ts — OpenAI-format streamed tool_calls, Meta cookbook loop in /api/chat (max 3 turns), tool_call_supported() gates Anthropic off.
 - E2E verified with scripts/mock-agentmail.mjs + mock-llm tool path: chat "check my mail" → tool call → sync → triage → task "Pay invoice #4471" on board.
 - Gotchas: env changes need `npm run build` before `next start` sees them; mock JSON-body matchers must match escaped quotes.
+
+## Productionization pass (2026-09-13)
+
+- Workflows are real: Workflow + WorkflowRun tables, /workflows screen, scheduler (src/lib/scheduler.ts) executing mail_triage + custom_prompt, local 5-min sweeper via src/instrumentation.ts, Vercel cron via vercel.json hitting /api/cron/sweep (set CRON_SECRET env).
+- Real data everywhere: /api/pulse computes metrics from DB; /api/runs/recent feeds Hub; /api/threads drives Chats; Task Board shows DB rows only; office alerts computed from real signals (failed runs, overdue tasks, untriaged mail).
+- Media Lab: honest "generation provider needed" state; "Send to the crew" creates a real thread (?prompt= handoff).
+- Schema fix: EmailMessage.remoteId unique per mailbox (composite @@unique) — AgentMail IDs are per-inbox.
+- Applied to Turso: 20260913154124_workflows + 20260913162000_email_remoteid_composite (7 migrations total).
+- E2E verified locally: signup -> setup -> inbox provision, vendor email -> sync -> LLM triage -> task, workflow create -> sweep -> run, chat tool loop, real pulse metrics.
