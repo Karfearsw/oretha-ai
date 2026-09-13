@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   X,
@@ -17,6 +17,7 @@ import {
   Square,
   FileText,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import type { SegmentItem } from "@/components/ui/SegmentedControl";
@@ -26,7 +27,7 @@ import { AgentAvatar } from "@/components/ui/Avatar";
 import { OrethaMark } from "@/components/ui/OrethaMark";
 import { Chip } from "@/components/ui/Chip";
 import { agentById } from "@/lib/mock/agents";
-import { MESSAGES, RUNS, THREADS } from "@/lib/mock/threads";
+import { RUNS, THREADS } from "@/lib/mock/threads";
 import { generateAgentFiles } from "@/lib/agentFiles";
 import { useSessionUser } from "@/components/layout/AppShell";
 import type { ChatMessage } from "@/lib/types";
@@ -40,10 +41,22 @@ const SEGMENTS: SegmentItem<Seg>[] = [
   { value: "files", label: "Files", icon: Fingerprint },
 ];
 
+interface UiMessage {
+  id: string;
+  role: ChatMessage["role"];
+  text: string;
+  time: string;
+  toolLabel?: string;
+}
 
+function nowLabel() {
+  return new Date()
+    .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
 
 export default function ChatRoomPage() {
   const params = useParams<{ threadId: string }>();
+  const router = useRouter();
   const threadId = params.threadId;
   const thread = THREADS.find((t) => t.id === threadId) ?? THREADS[0];
   const lead = agentById(thread.agentIds[0]) ?? agentById("oretha")!;
@@ -52,21 +65,16 @@ export default function ChatRoomPage() {
     lead.id === "oretha" ? sessionUser?.agentName || "Oretha" : lead.name;
 
   const [seg, setSeg] = useState<Seg>("activity");
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    MESSAGES[threadId] ?? [
-      {
-        id: "seed",
-        role: "oretha",
-        text: `This is your ${thread.title} thread. What are we getting into?`,
-        time: "9:00 AM",
-      },
-    ],
-  );
+  const [messages, setMessages] = useState<UiMessage[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(thread.running ?? false);
+  const [busy, setBusy] = useState(false);
+  const [streaming, setStreaming] = useState<string | null>(null);
+  const [llmReady, setLlmReady] = useState<boolean | null>(null);
   const [fileOpen, setFileOpen] = useState<string | null>(null);
   const [dbFiles, setDbFiles] = useState<Record<string, string>>({});
   const listRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   // templates from her setup answers (fallback until DB files load)
   const MEMORY_FILES = useMemo(() => {
@@ -99,35 +107,167 @@ export default function ChatRoomPage() {
         setDbFiles(map);
       })
       .catch(() => {});
+    fetch("/api/llm-status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setLlmReady(Boolean(d?.configured)))
+      .catch(() => setLlmReady(false));
   }, []);
+
+  // real thread history: /chats/<dbId> by id, legacy /chats/t1 via slug
+  useEffect(() => {
+    setLoaded(false);
+    setMessages([]);
+    let url = `/api/threads/${threadId}/messages`;
+    if (/^t\d+$/.test(threadId)) {
+      fetch("/api/threads")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const match = (d?.threads ?? []).find((t: { slug: string }) =>
+            t.slug === threadId,
+          );
+          if (!match) {
+            // no such thread yet — create it and swap the URL
+            fetch("/api/threads", { method: "POST" })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((c) => {
+                if (c?.thread) router.replace(`/chats/${c.thread.id}`);
+                else setLoaded(true);
+              })
+              .catch(() => setLoaded(true));
+            return;
+          }
+          return loadHistory(match.id);
+        })
+        .catch(() => setLoaded(true));
+    } else {
+      loadHistory(threadId);
+    }
+
+    async function loadHistory(id: string) {
+      try {
+        const r = await fetch(`/api/threads/${id}/messages`);
+        if (!r.ok) return setLoaded(true);
+        const d = await r.json();
+        setMessages(
+          (d.messages ?? []).map(
+            (m: { id: string; role: string; content: string; createdAt: string }) => ({
+              id: m.id,
+              role: m.role === "user" ? "user" : "oretha",
+              text: m.content,
+              time: new Date(m.createdAt).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+              }),
+            }),
+          ),
+        );
+      } catch {
+        /* keep whatever we have */
+      } finally {
+        setLoaded(true);
+      }
+    }
+  }, [threadId, router]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, busy]);
+  }, [messages, streaming, busy]);
 
-  const send = () => {
-    const text = input.trim();
-    if (!text) return;
-    setMessages((m) => [
-      ...m,
-      { id: `u${Date.now()}`, role: "user", text, time: "Now" },
-    ]);
-    setInput("");
-    setBusy(true);
-    setTimeout(() => {
+  const stop = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (streaming !== null && streaming.trim()) {
       setMessages((m) => [
         ...m,
         {
-          id: `o${Date.now()}`,
+          id: `o-stop-${Date.now()}`,
           role: "oretha",
-          text: "Say less — I'm on it. I'll pull the context, draft the plan, and loop in whoever needs to move.",
-          time: "Now",
-          toolLabel: "Delegated to 2 agents",
+          text: streaming,
+          time: nowLabel(),
         },
       ]);
-      setBusy(false);
-    }, 1400);
+    }
+    setStreaming(null);
+    setBusy(false);
   };
+
+  const send = () => {
+    const text = input.trim();
+    if (!text || busy) return;
+
+    setMessages((m) => [
+      ...m,
+      { id: `u${Date.now()}`, role: "user", text, time: nowLabel() },
+    ]);
+    setInput("");
+    setBusy(true);
+    setStreaming("");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ threadId, message: text }),
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (res.status === 503) {
+          setStreaming(
+            "My voice isn't wired up yet — add LLM_API_KEY on the server and I'll answer for real. Everything else is ready.",
+          );
+          return;
+        }
+        if (res.status === 404) {
+          setStreaming("This chat went missing on my end. Start a new one?");
+          return;
+        }
+        if (!res.ok || !res.body) {
+          setStreaming("Something shorted out on my end — try that again.");
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let acc = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          acc += decoder.decode(value, { stream: true });
+          setStreaming(acc);
+        }
+        if (!acc.trim()) {
+          setStreaming("Something shorted out on my end — try that again.");
+        }
+      })
+      .catch((err) => {
+        if ((err as Error).name === "AbortError") return;
+        setStreaming("Network dropped mid-thought. Try that again.");
+      })
+      .finally(() => {
+        abortRef.current = null;
+        setBusy(false);
+        setStreaming((current) => {
+          if (current !== null) {
+            setMessages((m) => [
+              ...m,
+              {
+                id: `o${Date.now()}`,
+                role: "oretha",
+                text: current,
+                time: nowLabel(),
+              },
+            ]);
+          }
+          return null;
+        });
+      });
+  };
+
+  const fileContent = (name: string) =>
+    dbFiles[name] ??
+    MEMORY_FILES.find((f) => f.name === name)?.content ??
+    "";
 
   return (
     <main className="flex min-h-dvh flex-col bg-canvas">
@@ -175,13 +315,41 @@ export default function ChatRoomPage() {
             <p className="text-center text-[11px] font-medium uppercase tracking-widest text-clay">
               Today
             </p>
+            {loaded && messages.length === 0 && streaming === null && (
+              <div className="flex flex-col items-center gap-2 pt-10 text-center">
+                <Sparkles size={26} className="text-gold" />
+                <p className="font-display text-[15px] font-bold text-cream">
+                  {agentName} is listening
+                </p>
+                <p className="max-w-[260px] text-[12.5px] text-clay">
+                  She knows your files, your rules, and your memory. What do you
+                  need?
+                </p>
+              </div>
+            )}
+            {!loaded && messages.length === 0 && (
+              <p className="pt-10 text-center text-[13px] text-clay">
+                Loading the conversation…
+              </p>
+            )}
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
-            {busy && <TypingDots />}
-            {RUNS.filter((r) => r.status === "running").map((run) => (
-              <AgentRunRow key={run.id} run={run} />
-            ))}
+            {streaming !== null && streaming !== "" && (
+              <MessageBubble
+                message={{
+                  id: "streaming",
+                  role: "oretha",
+                  text: streaming,
+                  time: "Now",
+                }}
+              />
+            )}
+            {busy && streaming === "" && <TypingDots />}
+            {seg === "activity" &&
+              RUNS.filter((r) => r.status === "running").map((run) => (
+                <AgentRunRow key={run.id} run={run} />
+              ))}
           </div>
         )}
 
@@ -211,28 +379,39 @@ export default function ChatRoomPage() {
         {seg === "memory" && (
           <div className="flex flex-col gap-2.5 pt-3">
             <p className="text-[13px] leading-snug text-sand">
-              The files that make Oretha yours. Tap to read or edit.
+              The files that make {agentName} yours. She reads all five before
+              every reply — and updates her memory as she learns you.
             </p>
-            {MEMORY_FILES.map((f) => (
-              <button
-                key={f.name}
-                onClick={() => setFileOpen(f.name)}
-                className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-violet/20 text-[#c4b5fd]">
-                  <FileText size={18} />
-                </span>
-                <span className="flex-1">
-                  <span className="block font-mono text-[14px] font-semibold text-cream">
-                    {f.name}
+            {["IDENTITY.md", "SOUL.md", "USER.md", "RULES.md", "MEMORY.md"].map(
+              (f) => (
+                <button
+                  key={f}
+                  onClick={() => setFileOpen(f)}
+                  className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-violet/20 text-[#c4b5fd]">
+                    <FileText size={18} />
                   </span>
-                  <span className="block text-[12px] text-clay">
-                    Persona · memory · identity
+                  <span className="flex-1">
+                    <span className="block font-mono text-[14px] font-semibold text-cream">
+                      {f}
+                    </span>
+                    <span className="block text-[12px] text-clay">
+                      {f === "MEMORY.md"
+                        ? "Auto-updated as you talk"
+                        : f === "USER.md"
+                          ? "What she knows about you"
+                          : f === "RULES.md"
+                            ? "The boundaries she lives by"
+                            : f === "SOUL.md"
+                              ? "Her voice and character"
+                              : "Who she is"}
+                    </span>
                   </span>
-                </span>
-                <ChevronRight size={18} className="text-clay" />
-              </button>
-            ))}
+                  <ChevronRight size={18} className="text-clay" />
+                </button>
+              ),
+            )}
           </div>
         )}
 
@@ -252,6 +431,11 @@ export default function ChatRoomPage() {
         className="sticky bottom-0 z-20 bg-gradient-to-t from-canvas via-canvas to-transparent px-4 pb-4 pt-2"
         style={{ paddingBottom: "calc(16px + var(--safe-bottom))" }}
       >
+        {llmReady === false && (
+          <p className="mb-2 rounded-[12px] border border-gold/30 bg-gold/10 px-3 py-2 text-center text-[11.5px] leading-snug text-gold">
+            No LLM key on the server yet — add <span className="font-mono">LLM_API_KEY</span> to go live.
+          </p>
+        )}
         <div className="flex items-center gap-2 rounded-full border border-white/10 bg-elevated py-1.5 pl-3 pr-1.5">
           <button aria-label="Add attachment" className="text-sand">
             <Plus size={20} />
@@ -260,7 +444,7 @@ export default function ChatRoomPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder={`Message in ${thread.title}…`}
+            placeholder={`Message ${agentName}…`}
             className="min-w-0 flex-1 bg-transparent text-[15px] text-cream outline-none placeholder:text-clay"
           />
           {input.trim() === "" && (
@@ -270,7 +454,7 @@ export default function ChatRoomPage() {
           )}
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onClick={send}
+            onClick={busy ? stop : send}
             aria-label={busy ? "Stop" : "Send"}
             className={`flex h-10 w-10 items-center justify-center rounded-full ${busy ? "bg-white text-canvas" : input.trim() ? "bg-gradient-to-br from-gold to-violet text-canvas" : "bg-white/10 text-clay"}`}
           >
@@ -286,13 +470,7 @@ export default function ChatRoomPage() {
       <FileSheet
         open={fileOpen !== null}
         filename={fileOpen ?? ""}
-        content={
-          fileOpen
-            ? (dbFiles[fileOpen] ??
-              MEMORY_FILES.find((f) => f.name === fileOpen)?.content ??
-              "")
-            : ""
-        }
+        content={fileOpen ? fileContent(fileOpen) : ""}
         onClose={() => setFileOpen(null)}
         onSave={async (name, content) => {
           setDbFiles((f) => ({ ...f, [name]: content }));
@@ -307,7 +485,7 @@ export default function ChatRoomPage() {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message }: { message: UiMessage }) {
   const isUser = message.role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>

@@ -8,6 +8,8 @@ Uncensored, Black-powered AI OS for work and creation — mobile-first. Chats, a
 - **Tailwind CSS v4** — design tokens in `src/app/globals.css`
 - **Prisma 7** + SQLite (`db/oretha.db`) via the libsql adapter — Postgres-ready schema
 - **Auth**: email + password (bcrypt), JWT session cookie (jose), httpOnly
+- **LLM**: provider-agnostic streaming (any OpenAI-compatible API or Anthropic)
+- **Memory**: background summarization merges durable facts into `MEMORY.md` after each exchange
 - framer-motion, lucide-react
 
 ## Getting started
@@ -52,9 +54,25 @@ src/
    - `DATABASE_URL` = `libsql://your-db.turso.io`
    - `DATABASE_AUTH_TOKEN` = your Turso token
    - `AUTH_SECRET` = a long random string
+   - `LLM_API_KEY` = your OpenAI (or compatible) key — see **Wiring Oretha's voice** below
 4. Apply the schema once from your machine:
    `DATABASE_URL="libsql://..." DATABASE_AUTH_TOKEN="..." npx prisma migrate deploy`
 5. Deploy. `prisma generate` runs automatically during the build.
+
+## Wiring Oretha's voice (LLM)
+
+The chat is a real streaming completion call. Configure it with env vars — no code changes needed for any OpenAI-compatible provider:
+
+| Variable | Purpose |
+|---|---|
+| `LLM_PROVIDER` | `openai` (default) or `anthropic` |
+| `LLM_API_KEY` | Provider API key — required for chat |
+| `LLM_MODEL` | e.g. `gpt-4o-mini`, `claude-3-5-haiku-latest` |
+| `LLM_BASE_URL` | Point at Groq, Together, OpenRouter, or local Ollama |
+
+Her system prompt is composed per request from your five agent files (IDENTITY → SOUL → USER → RULES → MEMORY). After each exchange, a background call extracts durable facts and merges them into `MEMORY.md` — she learns you as you talk.
+
+With no key set, the UI degrades gracefully: the composer shows a setup hint instead of failing silently.
 
 ## Notes
 
