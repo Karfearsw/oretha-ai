@@ -55,7 +55,7 @@ async function runWorkflow(
           content: `Scheduled workflow "${workflow.prompt.trim()}". Do the work and answer concisely — this runs without the user watching.`,
         },
       ],
-      { maxTokens: 700, temperature: 0.4 },
+      { maxTokens: 700, temperature: 0.4, userId: workflow.userId },
     );
     return answer.slice(0, 600);
   }

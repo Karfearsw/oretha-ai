@@ -19,6 +19,14 @@
  */
 
 import type { ToolSpec } from "@/lib/tools";
+import {
+  configFor,
+  type ProviderConfig,
+} from "@/lib/llmTypes";
+import { userProviderConfig } from "@/lib/userLlm";
+
+export type { ProviderConfig } from "@/lib/llmTypes";
+export { PROVIDER_DEFAULTS, PROVIDER_NAMES } from "@/lib/llmTypes";
 
 export interface LlmMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -37,59 +45,7 @@ export type StreamEvent =
   | { type: "text"; delta: string }
   | { type: "tool_calls"; calls: LlmToolCall[] };
 
-interface ProviderConfig {
-  provider: string;
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-}
-
-/* ── Known providers: default base URLs + models ───────────────────── */
-
-const PROVIDER_DEFAULTS: Record<
-  string,
-  { baseUrl: string; model: string }
-> = {
-  meta: { baseUrl: "https://api.meta.ai/v1", model: "muse-spark-1.3" },
-  openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
-  anthropic: {
-    baseUrl: "https://api.anthropic.com",
-    model: "claude-3-5-haiku-latest",
-  },
-  groq: {
-    baseUrl: "https://api.groq.com/openai/v1",
-    model: "llama-3.3-70b-versatile",
-  },
-  openrouter: {
-    baseUrl: "https://openrouter.ai/api/v1",
-    model: "meta-llama/llama-3.3-70b-instruct:free",
-  },
-  cerebras: { baseUrl: "https://api.cerebras.ai/v1", model: "llama-3.3-70b" },
-  mistral: {
-    baseUrl: "https://api.mistral.ai/v1",
-    model: "mistral-small-latest",
-  },
-  "github-models": {
-    baseUrl: "https://models.github.ai/inference",
-    model: "openai/gpt-4o",
-  },
-  ollama: { baseUrl: "http://localhost:11434/v1", model: "llama3.3" },
-};
-
-function configFor(
-  provider: string,
-  apiKey: string,
-  model?: string | null,
-  baseUrl?: string | null,
-): ProviderConfig {
-  const d = PROVIDER_DEFAULTS[provider] ?? PROVIDER_DEFAULTS.openai;
-  return {
-    provider,
-    apiKey: apiKey.trim(),
-    baseUrl: (baseUrl || d.baseUrl).replace(/\/+$/, ""),
-    model: model || d.model,
-  };
-}
+/* ── Known providers: default base URLs + models (in llmTypes.ts) ──── */
 
 /** Primary provider config from the classic LLM_* env vars. */
 function primaryConfig(): ProviderConfig {
@@ -116,9 +72,27 @@ function fallbackConfigs(): ProviderConfig[] {
     .filter((c) => c.apiKey.length > 0);
 }
 
-/** The full failover chain: primary first, then fallbacks in order. */
+/** The full failover chain: user key first, then env primary, then env fallbacks. */
 function chain(): ProviderConfig[] {
   return [primaryConfig(), ...fallbackConfigs()].filter((c) => c.apiKey);
+}
+
+/** Env-only chain (no user key) — for status reporting. */
+function envChain(): ProviderConfig[] {
+  return chain();
+}
+
+/**
+ * Chain for a specific user: their own stored key (BYOK) becomes the
+ * primary; env keys follow as fallback. Falls back cleanly when the
+ * user has no key.
+ */
+async function chainForUser(userId?: string | null): Promise<ProviderConfig[]> {
+  const env = envChain();
+  if (!userId) return env;
+  const userCfg = await userProviderConfig(userId).catch(() => null);
+  if (!userCfg) return env;
+  return [userCfg, ...env];
 }
 
 export function llmConfigured(): boolean {
@@ -406,8 +380,9 @@ async function* consumeSseEvents(
 export async function* streamChatWithTools(
   messages: LlmMessage[],
   tools?: ToolSpec[],
+  opts?: { userId?: string | null },
 ): AsyncGenerator<StreamEvent> {
-  const providers = chain();
+  const providers = await chainForUser(opts?.userId);
   if (providers.length === 0) throw new Error("LLM_NOT_CONFIGURED");
 
   let lastError: unknown = null;
@@ -464,9 +439,13 @@ export async function* streamChat(
 /** Single-shot completion (memory summarizer, mail triage) with failover. */
 export async function chatComplete(
   messages: LlmMessage[],
-  opts?: { maxTokens?: number; temperature?: number },
+  opts?: {
+    maxTokens?: number;
+    temperature?: number;
+    userId?: string | null;
+  },
 ): Promise<string> {
-  const providers = chain();
+  const providers = await chainForUser(opts?.userId);
   if (providers.length === 0) throw new Error("LLM_NOT_CONFIGURED");
   const maxTokens = opts?.maxTokens ?? 1024;
   const temperature = opts?.temperature ?? 0.2;

@@ -135,7 +135,7 @@ export async function GET() {
         },
         { role: "user", content: activity },
       ],
-      { maxTokens: 250, temperature: 0.6 },
+      { maxTokens: 250, temperature: 0.6, userId: user.id },
     );
     const match = raw.match(/\[[\s\S]*\]/);
     if (match) {

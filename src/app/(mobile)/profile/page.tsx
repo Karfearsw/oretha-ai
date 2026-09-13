@@ -14,7 +14,11 @@ import {
   Plug,
   Check,
   LogOut,
+  KeyRound,
+  Loader2,
+  Zap,
 } from "lucide-react";
+import { Sheet } from "@/components/ui/Sheet";
 import { FileSheet } from "@/components/ui/FileSheet";
 import { Toggle } from "@/components/ui/Toggle";
 import { Button } from "@/components/ui/Button";
@@ -44,6 +48,24 @@ export default function ProfilePage() {
     (user?.censorship as "open" | "guarded" | "strict") ?? "open",
   );
   const [empowerment, setEmpowerment] = useState(user?.empowerment ?? true);
+
+  // BYOK LLM settings
+  const [llm, setLlm] = useState<{
+    hasKey: boolean;
+    provider: string | null;
+    model: string | null;
+  } | null>(null);
+  const [providers, setProviders] = useState<string[]>([]);
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [keyProvider, setKeyProvider] = useState("meta");
+  const [KeyValue, setKeyValue] = useState("");
+  const [keyModel, setKeyModel] = useState("");
+  const [keySaving, setKeySaving] = useState(false);
+  const [keyNote, setKeyNote] = useState<string | null>(null);
+
+  // Upgrade flow
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
 
   const agentName = user?.agentName || "Oretha";
   const first = (user?.name ?? "friend").split(" ")[0];
@@ -76,6 +98,13 @@ export default function ProfilePage() {
         setFiles(map);
       })
       .catch(() => setFiles({}));
+    fetch("/api/user-llm")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.settings) setLlm(d.settings);
+        if (d?.providers) setProviders(d.providers);
+      })
+      .catch(() => {});
   }, []);
 
   async function saveFile(name: string, content: string) {
@@ -101,6 +130,61 @@ export default function ProfilePage() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.replace("/welcome");
     router.refresh();
+  }
+
+  async function saveKey() {
+    if (keySaving) return;
+    setKeySaving(true);
+    setKeyNote(null);
+    try {
+      const r = await fetch("/api/user-llm", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: KeyValue.trim(),
+          provider: keyProvider,
+          model: keyModel.trim() || null,
+        }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) {
+        setKeyNote(
+          d?.error === "unknown_provider"
+            ? "Pick a provider from the list."
+            : "That key doesn't look right — check it and try again.",
+        );
+        return;
+      }
+      setLlm(d.settings);
+      setKeyValue("");
+      setKeyOpen(false);
+      setKeyNote(
+        d.settings?.hasKey
+          ? "Key saved — your own model now answers first."
+          : "Key removed — back on the community models.",
+      );
+      setTimeout(() => setKeyNote(null), 5000);
+    } finally {
+      setKeySaving(false);
+    }
+  }
+
+  async function upgrade(toPlan: "free" | "pro") {
+    if (upgrading) return;
+    setUpgrading(true);
+    try {
+      const r = await fetch("/api/plan", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: toPlan }),
+      });
+      if (r.ok) {
+        setUpgradeOpen(false);
+        router.refresh();
+      }
+    } finally {
+      setUpgrading(false);
+    }
   }
 
   const plan = user?.plan ?? "free";
@@ -177,10 +261,14 @@ export default function ProfilePage() {
                 </p>
               </div>
             </div>
-            {plan === "free" && (
-              <Button variant="primary" size="sm">
+            {plan === "free" ? (
+              <Button variant="primary" size="sm" onClick={() => setUpgradeOpen(true)}>
                 Upgrade
               </Button>
+            ) : (
+              <Chip tone="gold">
+                <Crown size={11} /> Pro
+              </Chip>
             )}
           </div>
         </div>
@@ -239,6 +327,36 @@ export default function ProfilePage() {
         </div>
       </section>
 
+      <section aria-label="API keys" className="flex flex-col gap-2.5">
+        <h2 className="flex items-center gap-2 font-display text-[16px] font-bold text-cream">
+          <KeyRound size={16} className="text-gold" /> Model access
+        </h2>
+        <button
+          onClick={() => setKeyOpen(true)}
+          className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+        >
+          <span className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-gold/15 text-gold">
+            <Zap size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-semibold text-cream">
+              Your own API key
+            </span>
+            <span className="block text-[12px] leading-snug text-clay">
+              {llm?.hasKey
+                ? `Active — ${llm.provider ?? "custom"}${llm.model ? ` · ${llm.model}` : ""} · answers first, community models as backup`
+                : "Bring your own (Meta, OpenAI, Groq…) — encrypted at rest"}
+            </span>
+          </span>
+          <ChevronRight size={18} className="text-clay" />
+        </button>
+        {keyNote && (
+          <p className="rounded-[12px] border border-gold/30 bg-gold/10 px-3 py-2 text-center text-[11.5px] leading-snug text-gold">
+            {keyNote}
+          </p>
+        )}
+      </section>
+
       <section aria-label="Connectors" className="flex flex-col gap-2.5">
         <h2 className="flex items-center gap-2 font-display text-[16px] font-bold text-cream">
           <Plug size={16} className="text-gold" /> Connectors
@@ -280,6 +398,144 @@ export default function ProfilePage() {
       <p className="pb-2 text-center text-[11.5px] text-clay">
         Oretha AI v0.3 · Uncensored by design · Your data stays yours
       </p>
+
+      {/* API key editor */}
+      <Sheet open={keyOpen} onClose={() => setKeyOpen(false)} title="Your own API key">
+        <div className="flex flex-col gap-3.5 pb-4">
+          <p className="text-[12.5px] leading-snug text-sand">
+            Your key is encrypted (AES-256-GCM) and used only to answer your
+            requests. When set, it answers first; platform models stay as
+            backup. Remove it anytime.
+          </p>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-[12px] font-semibold uppercase tracking-wide text-clay">
+              Provider
+            </label>
+            <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
+              {(providers.length ? providers : ["meta", "openai", "groq"]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setKeyProvider(p)}
+                  className={`shrink-0 rounded-full border px-3.5 py-2 text-[12.5px] font-semibold transition ${
+                    keyProvider === p
+                      ? "border-gold bg-gold/15 text-gold"
+                      : "border-white/10 bg-elevated text-sand"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-[12px] font-semibold uppercase tracking-wide text-clay">
+              API key
+            </label>
+            <input
+              type="password"
+              autoComplete="off"
+              value={KeyValue}
+              onChange={(e) => setKeyValue(e.target.value)}
+              placeholder={llm?.hasKey ? "•••••••• (saved — paste to replace)" : "Paste your key"}
+              className="w-full rounded-[14px] border border-white/10 bg-canvas p-3.5 font-mono text-[14px] text-cream outline-none placeholder:text-clay"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-[12px] font-semibold uppercase tracking-wide text-clay">
+              Model (optional)
+            </label>
+            <input
+              value={keyModel}
+              onChange={(e) => setKeyModel(e.target.value)}
+              placeholder="Default for the provider"
+              className="w-full rounded-[14px] border border-white/10 bg-canvas p-3.5 font-mono text-[13.5px] text-cream outline-none placeholder:text-clay"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="gradient"
+              size="md"
+              onClick={saveKey}
+              loading={keySaving}
+              disabled={keySaving || (!KeyValue.trim() && !llm?.hasKey)}
+            >
+              {keySaving ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+              {KeyValue.trim() ? "Save key" : "Keep saved"}
+            </Button>
+            {llm?.hasKey && (
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={() => {
+                  setKeyValue("");
+                }}
+              >
+                Type new key
+              </Button>
+            )}
+            {llm?.hasKey && !KeyValue.trim() && (
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={async () => {
+                  const r = await fetch("/api/user-llm", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ apiKey: "", provider: keyProvider }),
+                  });
+                  const d = await r.json().catch(() => null);
+                  if (d?.settings) setLlm(d.settings);
+                  setKeyOpen(false);
+                  setKeyNote("Key removed — back on the community models.");
+                  setTimeout(() => setKeyNote(null), 5000);
+                }}
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+        </div>
+      </Sheet>
+
+      {/* Upgrade sheet */}
+      <Sheet open={upgradeOpen} onClose={() => setUpgradeOpen(false)} title="Oretha Pro">
+        <div className="flex flex-col gap-4 pb-4">
+          <div className="flex flex-col gap-2.5 rounded-[16px] border border-gold/25 p-4"
+            style={{ background: "linear-gradient(135deg, rgba(212,162,78,0.12), rgba(124,58,237,0.12))" }}
+          >
+            <p className="font-display text-[15px] font-bold text-cream">
+              Everything unlocks:
+            </p>
+            {["Unlimited agents in your crew", "Up to 5 scheduled workflows", "Priority models — your key rides first"].map((f) => (
+              <p key={f} className="flex items-center gap-2 text-[13.5px] text-sand">
+                <Check size={14} className="shrink-0 text-gold" /> {f}
+              </p>
+            ))}
+            <p className="text-[12px] leading-snug text-clay">
+              Early access: Pro activates right now, no card. When billing
+              arrives, existing Pro members keep their founding rate.
+            </p>
+          </div>
+          <Button
+            variant="gradient"
+            size="lg"
+            onClick={() => upgrade("pro")}
+            loading={upgrading}
+          >
+            <Crown size={18} /> {upgrading ? "Activating…" : "Activate Pro"}
+          </Button>
+          <button
+            onClick={() => setUpgradeOpen(false)}
+            className="text-center text-[13px] font-semibold text-clay"
+          >
+            Not now
+          </button>
+        </div>
+      </Sheet>
 
       <FileSheet
         open={fileOpen !== null}

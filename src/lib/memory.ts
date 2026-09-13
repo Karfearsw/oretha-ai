@@ -48,7 +48,7 @@ export async function updateMemory(
         content: `CURRENT MEMORY.md:\n${file.content}\n\nEXCHANGE:\n${transcript}`,
       },
     ],
-    { maxTokens: 300, temperature: 0 },
+    { maxTokens: 300, temperature: 0, userId: userId },
   );
 
   const newFacts = extracted
@@ -60,12 +60,16 @@ export async function updateMemory(
 
   await prisma.agentFile.update({
     where: { id: file.id },
-    data: { content: await mergeMemory(file.content, newFacts) },
+    data: { content: await mergeMemory(file.content, newFacts, userId) },
   });
 }
 
 /** Append facts under ## Facts, dedupe, consolidate when the file gets huge. */
-async function mergeMemory(current: string, facts: string[]): Promise<string> {
+async function mergeMemory(
+  current: string,
+  facts: string[],
+  userId: string,
+): Promise<string> {
   const lines = current.split("\n");
   const factsIdx = lines.findIndex((l) => l.trim() === "## Facts");
   if (factsIdx === -1) {
@@ -97,7 +101,7 @@ async function mergeMemory(current: string, facts: string[]): Promise<string> {
 
   // Consolidate when the file grows past the char budget — never silently drop.
   if (next.join("\n").length > MAX_MEMORY_CHARS) {
-    next = await consolidateFacts(next, factsIdx).catch(() =>
+    next = await consolidateFacts(next, factsIdx, userId).catch(() =>
       truncateFacts(next, factsIdx),
     );
   }
@@ -120,6 +124,7 @@ function normalize(line: string): string {
 async function consolidateFacts(
   lines: string[],
   factsIdx: number,
+  userId: string,
 ): Promise<string[]> {
   let end = factsIdx + 1;
   while (
@@ -140,7 +145,7 @@ async function consolidateFacts(
       },
       { role: "user", content: factLines.join("\n") },
     ],
-    { maxTokens: 600, temperature: 0 },
+    { maxTokens: 600, temperature: 0, userId: userId },
   );
 
   const merged = consolidated

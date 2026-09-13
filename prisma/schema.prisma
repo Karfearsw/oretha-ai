@@ -26,6 +26,12 @@ model User {
   empowerment    Boolean  @default(true)
   responseLength String   @default("balanced")
 
+  // bring-your-own-key LLM settings (encrypted at rest, AES-256-GCM)
+  llmProvider     String?
+  llmApiKeyEnc    String?
+  llmModel        String?
+  llmBaseUrl      String?
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

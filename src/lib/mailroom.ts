@@ -40,7 +40,7 @@ function dueFromDays(days: number | undefined): string {
 
 /** Triage a single email. Never throws — returns null on failure. */
 async function triageOne(
-  ctx: { agentName: string; ownerName: string; ownerWork: string | null },
+  ctx: { agentName: string; ownerName: string; ownerWork: string | null; userId: string },
   email: { from: string; subject: string; preview: string },
 ): Promise<TriageVerdict | null> {
   const raw = await chatComplete(
@@ -64,7 +64,7 @@ async function triageOne(
         content: `From: ${email.from}\nSubject: ${email.subject}\n\n${email.preview}`,
       },
     ],
-    { maxTokens: 300, temperature: 0 },
+    { maxTokens: 300, temperature: 0, userId: ctx.userId },
   );
   return parseVerdict(raw);
 }
@@ -76,7 +76,12 @@ async function triageOne(
  */
 export async function syncMailbox(
   mailbox: Mailbox,
-  ctx: { agentName: string; ownerName: string; ownerWork: string | null },
+  ctx: {
+    agentName: string;
+    ownerName: string;
+    ownerWork: string | null;
+    userId: string;
+  },
 ): Promise<{ fetched: number; triaged: number; tasks: number }> {
   const apiKey = decryptSecret(mailbox);
   const incoming = await amListMessages(apiKey, mailbox.inboxId, 25);
@@ -149,7 +154,10 @@ export async function syncAllMailboxes(
   const results = [];
   for (const box of mailboxes) {
     try {
-      results.push({ inboxId: box.inboxId, ...(await syncMailbox(box, ctx)) });
+      results.push({
+        inboxId: box.inboxId,
+        ...(await syncMailbox(box, { ...ctx, userId })),
+      });
     } catch (err) {
       results.push({
         inboxId: box.inboxId,

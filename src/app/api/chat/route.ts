@@ -81,7 +81,9 @@ export async function POST(req: Request) {
           let turnText = "";
           let calls: LlmToolCall[] | null = null;
 
-          for await (const ev of streamChatWithTools(llmMessages, tools)) {
+          for await (const ev of streamChatWithTools(llmMessages, tools, {
+            userId: user.id,
+          })) {
             if (ev.type === "text") {
               turnText += ev.delta;
               controller.enqueue(encoder.encode(ev.delta));
