@@ -19,3 +19,6 @@ src/generated/
 # logs
 *.log
 server.log
+
+# Freebuff thread-local preview state
+.freebuff/

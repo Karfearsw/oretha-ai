@@ -1,12 +1,19 @@
 /* ── Provider-agnostic LLM adapter ──────────────────────────────────
  * Talks to any OpenAI-compatible chat API (OpenAI, Groq, Together,
- * OpenRouter, local Ollama/LM Studio, …) or Anthropic Messages API.
+ * OpenRouter, Meta Model API / Muse, local Ollama/LM Studio, …) or the
+ * Anthropic Messages API.
  *
  * Configure via env:
- *   LLM_PROVIDER = openai | anthropic            (default: openai)
+ *   LLM_PROVIDER = openai | anthropic | meta     (default: openai)
  *   LLM_API_KEY  = sk-…                          (required)
  *   LLM_MODEL    = gpt-4o-mini                   (default per provider)
  *   LLM_BASE_URL = https://api.openai.com/v1     (optional override)
+ *
+ * Meta Model API (Muse Spark): base URL https://api.meta.ai/v1, key from
+ * dev.meta.ai (format `LLM|…|…`), model muse-spark-1.3. OpenAI-compatible,
+ * but it is a reasoning model that applies `system` content at the
+ * `developer` level and rejects `stop`/`logit_bias` — we map roles
+ * accordingly and never send those parameters.
  */
 
 export interface LlmMessage {
@@ -15,29 +22,51 @@ export interface LlmMessage {
 }
 
 interface LlmConfig {
-  provider: "openai" | "anthropic";
+  provider: "openai" | "anthropic" | "meta";
   apiKey: string;
   baseUrl: string;
   model: string;
 }
 
 function config(): LlmConfig {
-  const provider = (process.env.LLM_PROVIDER === "anthropic"
-    ? "anthropic"
-    : "openai") as LlmConfig["provider"];
+  const rawProvider = process.env.LLM_PROVIDER;
+  const provider: LlmConfig["provider"] =
+    rawProvider === "anthropic" || rawProvider === "meta"
+      ? rawProvider
+      : "openai";
 
   const baseUrl = (
     process.env.LLM_BASE_URL ??
     (provider === "anthropic"
       ? "https://api.anthropic.com"
-      : "https://api.openai.com/v1")
+      : provider === "meta"
+        ? "https://api.meta.ai/v1"
+        : "https://api.openai.com/v1")
   ).replace(/\/+$/, "");
 
   const model =
     process.env.LLM_MODEL ??
-    (provider === "anthropic" ? "claude-3-5-haiku-latest" : "gpt-4o-mini");
+    (provider === "anthropic"
+      ? "claude-3-5-haiku-latest"
+      : provider === "meta"
+        ? "muse-spark-1.3"
+        : "gpt-4o-mini");
 
   return { provider, apiKey: process.env.LLM_API_KEY ?? "", baseUrl, model };
+}
+
+/**
+ * Meta Model API (Muse Spark) treats `system` content at the `developer`
+ * level — map our system messages to the `developer` role, which is the
+ * highest-precedence steering role there.
+ */
+function mapRolesForMeta(
+  messages: LlmMessage[],
+): { role: "developer" | "user" | "assistant"; content: string }[] {
+  return messages.map((m) => ({
+    role: m.role === "system" ? "developer" : m.role,
+    content: m.content,
+  }));
 }
 
 export function llmConfigured(): boolean {
@@ -128,14 +157,15 @@ export async function* streamChat(
     return;
   }
 
-  // OpenAI-compatible (default)
+  // OpenAI-compatible (default; also Meta Model API / Muse Spark)
+  const wire = provider === "meta" ? mapRolesForMeta(messages) : messages;
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, messages, stream: true }),
+    body: JSON.stringify({ model, messages: wire, stream: true }),
   });
   if (!res.ok)
     throw new Error(`LLM ${res.status}: ${await safeErrorText(res)}`);
@@ -190,6 +220,7 @@ export async function chatComplete(
       .trim();
   }
 
+  const wire = provider === "meta" ? mapRolesForMeta(messages) : messages;
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -200,7 +231,7 @@ export async function chatComplete(
       model,
       max_tokens: maxTokens,
       temperature,
-      messages,
+      messages: wire,
     }),
   });
   if (!res.ok)

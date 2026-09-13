@@ -8,7 +8,7 @@ Uncensored, Black-powered AI OS for work and creation — mobile-first. Chats, a
 - **Tailwind CSS v4** — design tokens in `src/app/globals.css`
 - **Prisma 7** + SQLite (`db/oretha.db`) via the libsql adapter — Postgres-ready schema
 - **Auth**: email + password (bcrypt), JWT session cookie (jose), httpOnly
-- **LLM**: provider-agnostic streaming (any OpenAI-compatible API or Anthropic)
+- **LLM**: provider-agnostic streaming (Meta Model API / Muse Spark by default, or any OpenAI-compatible API or Anthropic)
 - **Memory**: background summarization merges durable facts into `MEMORY.md` after each exchange
 - framer-motion, lucide-react
 
@@ -56,7 +56,7 @@ src/
    - `AUTH_SECRET` = a long random string
    - `LLM_API_KEY` = your OpenAI (or compatible) key — see **Wiring Oretha's voice** below
 4. Apply the schema once from your machine:
-   `DATABASE_URL="libsql://..." DATABASE_AUTH_TOKEN="..." npx prisma migrate deploy`
+   `node scripts/apply-migrations-turso.mjs "libsql://..." "your-token"` — applies the migration SQL directly and records it in `_prisma_migrations` exactly as `prisma migrate deploy` would (the Prisma 7 CLI does not accept remote `libsql://` URLs for migrations on all setups). Verify afterwards with `node scripts/verify-turso.mjs "libsql://..." "your-token"`.
 5. Deploy. `prisma generate` runs automatically during the build.
 
 ## Wiring Oretha's voice (LLM)
@@ -65,10 +65,10 @@ The chat is a real streaming completion call. Configure it with env vars — no 
 
 | Variable | Purpose |
 |---|---|
-| `LLM_PROVIDER` | `openai` (default) or `anthropic` |
-| `LLM_API_KEY` | Provider API key — required for chat |
-| `LLM_MODEL` | e.g. `gpt-4o-mini`, `claude-3-5-haiku-latest` |
-| `LLM_BASE_URL` | Point at Groq, Together, OpenRouter, or local Ollama |
+| `LLM_PROVIDER` | `meta` (default — Meta Model API / Muse Spark), `openai`, or `anthropic` |
+| `LLM_API_KEY` | Provider API key — required for chat. For Meta: create one at [dev.meta.ai](https://dev.meta.ai) (format `LLM\|…\|…`) |
+| `LLM_MODEL` | e.g. `muse-spark-1.3` (Meta default), `gpt-4o-mini`, `claude-3-5-haiku-latest` |
+| `LLM_BASE_URL` | Optional override — Meta defaults to `https://api.meta.ai/v1`; point at Groq, Together, OpenRouter, or local Ollama |
 
 Her system prompt is composed per request from your five agent files (IDENTITY → SOUL → USER → RULES → MEMORY). After each exchange, a background call extracts durable facts and merges them into `MEMORY.md` — she learns you as you talk.
 
