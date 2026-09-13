@@ -1,25 +1,21 @@
-/* ── Provider-agnostic LLM adapter ──────────────────────────────────
- * Talks to any OpenAI-compatible chat API (OpenAI, Groq, Together,
- * OpenRouter, Meta Model API / Muse, local Ollama/LM Studio, …) or the
- * Anthropic Messages API.
+/* ── Provider-agnostic LLM adapter with failover ─────────────────────
+ * Primary provider comes from LLM_* env vars; additional providers come
+ * from LLM_FALLBACKS and are tried in order whenever a provider fails
+ * BEFORE the first streamed token (rate limit, outage, bad key, timeout).
+ * Once tokens are flowing we never switch mid-stream.
  *
  * Configure via env:
- *   LLM_PROVIDER = openai | anthropic | meta     (default: openai)
- *   LLM_API_KEY  = sk-…                          (required)
- *   LLM_MODEL    = gpt-4o-mini                   (default per provider)
- *   LLM_BASE_URL = https://api.openai.com/v1     (optional override)
+ *   LLM_PROVIDER = meta | openai | anthropic | groq | openrouter | …
+ *   LLM_API_KEY  = provider key                     (required)
+ *   LLM_MODEL    = model id                         (default per provider)
+ *   LLM_BASE_URL = optional override                (default per provider)
+ *   LLM_FALLBACKS = "groq::gsk_…::llama-3.3-70b-versatile;openrouter::sk-or-…::meta-llama/llama-3.3-70b-instruct:free"
+ *       spec format:  provider::apiKey[::model][::baseUrl]  — entries split by ";"
  *
- * Meta Model API (Muse Spark): base URL https://api.meta.ai/v1, key from
- * dev.meta.ai (format `LLM|…|…`), model muse-spark-1.3. OpenAI-compatible,
- * but it is a reasoning model that applies `system` content at the
- * `developer` level, rejects `stop`/`logit_bias`, and only supports
- * `tool_choice: "auto"` — we map roles accordingly and never send the
- * unsupported parameters.
- *
- * Tool calling follows the Meta cookbook pattern: define tools as JSON
- * schemas; when the model returns finish_reason="tool_calls", the caller
- * executes each call and appends the assistant message + one `tool`
- * message per tool_call_id, looping until the model answers in text.
+ * Meta Model API (Muse Spark): api.meta.ai/v1, key `LLM|…|…`, model
+ * muse-spark-1.3. OpenAI-compatible but a reasoning model: `system`
+ * content is applied at the `developer` level; `stop`/`logit_bias` are
+ * rejected; only `tool_choice: "auto"` is supported.
  */
 
 import type { ToolSpec } from "@/lib/tools";
@@ -41,61 +37,134 @@ export type StreamEvent =
   | { type: "text"; delta: string }
   | { type: "tool_calls"; calls: LlmToolCall[] };
 
-interface LlmConfig {
-  provider: "openai" | "anthropic" | "meta";
+interface ProviderConfig {
+  provider: string;
   apiKey: string;
   baseUrl: string;
   model: string;
 }
 
-function config(): LlmConfig {
-  const rawProvider = process.env.LLM_PROVIDER;
-  const provider: LlmConfig["provider"] =
-    rawProvider === "anthropic" || rawProvider === "meta"
-      ? rawProvider
-      : "openai";
+/* ── Known providers: default base URLs + models ───────────────────── */
 
-  const baseUrl = (
-    process.env.LLM_BASE_URL ??
-    (provider === "anthropic"
-      ? "https://api.anthropic.com"
-      : provider === "meta"
-        ? "https://api.meta.ai/v1"
-        : "https://api.openai.com/v1")
-  ).replace(/\/+$/, "");
+const PROVIDER_DEFAULTS: Record<
+  string,
+  { baseUrl: string; model: string }
+> = {
+  meta: { baseUrl: "https://api.meta.ai/v1", model: "muse-spark-1.3" },
+  openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+  anthropic: {
+    baseUrl: "https://api.anthropic.com",
+    model: "claude-3-5-haiku-latest",
+  },
+  groq: {
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "llama-3.3-70b-versatile",
+  },
+  openrouter: {
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "meta-llama/llama-3.3-70b-instruct:free",
+  },
+  cerebras: { baseUrl: "https://api.cerebras.ai/v1", model: "llama-3.3-70b" },
+  mistral: {
+    baseUrl: "https://api.mistral.ai/v1",
+    model: "mistral-small-latest",
+  },
+  "github-models": {
+    baseUrl: "https://models.github.ai/inference",
+    model: "openai/gpt-4o",
+  },
+  ollama: { baseUrl: "http://localhost:11434/v1", model: "llama3.3" },
+};
 
-  const model =
-    process.env.LLM_MODEL ??
-    (provider === "anthropic"
-      ? "claude-3-5-haiku-latest"
-      : provider === "meta"
-        ? "muse-spark-1.3"
-        : "gpt-4o-mini");
+function configFor(
+  provider: string,
+  apiKey: string,
+  model?: string | null,
+  baseUrl?: string | null,
+): ProviderConfig {
+  const d = PROVIDER_DEFAULTS[provider] ?? PROVIDER_DEFAULTS.openai;
+  return {
+    provider,
+    apiKey: apiKey.trim(),
+    baseUrl: (baseUrl || d.baseUrl).replace(/\/+$/, ""),
+    model: model || d.model,
+  };
+}
 
-  return { provider, apiKey: process.env.LLM_API_KEY ?? "", baseUrl, model };
+/** Primary provider config from the classic LLM_* env vars. */
+function primaryConfig(): ProviderConfig {
+  return configFor(
+    process.env.LLM_PROVIDER ?? "openai",
+    process.env.LLM_API_KEY ?? "",
+    process.env.LLM_MODEL,
+    process.env.LLM_BASE_URL,
+  );
+}
+
+/** Parse LLM_FALLBACKS: "provider::key[::model][::url];…" */
+function fallbackConfigs(): ProviderConfig[] {
+  const raw = (process.env.LLM_FALLBACKS ?? "").trim();
+  if (!raw) return [];
+  return raw
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((spec) => {
+      const [provider, apiKey, model, baseUrl] = spec.split("::");
+      return configFor(provider, apiKey ?? "", model, baseUrl);
+    })
+    .filter((c) => c.apiKey.length > 0);
+}
+
+/** The full failover chain: primary first, then fallbacks in order. */
+function chain(): ProviderConfig[] {
+  return [primaryConfig(), ...fallbackConfigs()].filter((c) => c.apiKey);
 }
 
 export function llmConfigured(): boolean {
-  return config().apiKey.trim().length > 0;
+  return chain().length > 0;
+}
+
+export interface LlmChainInfo {
+  configured: boolean;
+  primary: { provider: string; model: string } | null;
+  fallbacks: { provider: string; model: string }[];
+}
+
+/** Chain summary for /api/llm-status and diagnostics. */
+export function llmChainInfo(): LlmChainInfo {
+  const c = chain();
+  return {
+    configured: c.length > 0,
+    primary: c[0]
+      ? { provider: c[0].provider, model: c[0].model }
+      : null,
+    fallbacks: c.slice(1).map((x) => ({ provider: x.provider, model: x.model })),
+  };
 }
 
 /** Tool calling is supported on OpenAI-compatible providers (incl. Meta). */
 export function toolCallSupported(): boolean {
-  return config().provider !== "anthropic";
+  return chain()[0]?.provider !== "anthropic";
 }
+
+/** Wire shape sent to OpenAI-compatible endpoints — Meta uses `developer`. */
+type WireMessage = {
+  role: "developer" | "system" | "user" | "assistant" | "tool";
+  content: string;
+  tool_call_id?: string;
+  tool_calls?: LlmToolCall[];
+};
 
 /**
  * Meta Model API (Muse Spark) treats `system` content at the `developer`
  * level — map our system messages to the `developer` role, which is the
  * highest-precedence steering role there.
  */
-function mapRolesForMeta(
-  messages: LlmMessage[],
-): { role: "developer" | "user" | "assistant" | "tool"; content: string; tool_call_id?: string; tool_calls?: LlmToolCall[] }[] {
-  return messages.map((m) => ({
-    ...m,
-    role: m.role === "system" ? "developer" : m.role,
-  }));
+function mapRolesForMeta(messages: LlmMessage[]): WireMessage[] {
+  return messages.map((m) =>
+    m.role === "system" ? { ...m, role: "developer" as const } : m,
+  );
 }
 
 /** Split system messages out — Anthropic takes `system` as a top-level field. */
@@ -117,6 +186,132 @@ async function safeErrorText(res: Response): Promise<string> {
     return "(no body)";
   }
 }
+
+/** Fetch that aborts if response headers don't arrive within `ms`. */
+async function fetchWithHeaderTimeout(
+  url: string,
+  init: RequestInit,
+  ms: number,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const CONNECT_TIMEOUT_MS = 15_000;
+
+/* ── Wire-format request builders (per provider family) ────────────── */
+
+interface PreparedRequest {
+  url: string;
+  init: RequestInit;
+  family: "openai" | "anthropic";
+}
+
+function prepareStream(
+  cfg: ProviderConfig,
+  messages: LlmMessage[],
+  tools?: ToolSpec[],
+): PreparedRequest {
+  if (cfg.provider === "anthropic") {
+    const { system, rest } = splitSystem(messages);
+    return {
+      family: "anthropic",
+      url: `${cfg.baseUrl}/v1/messages`,
+      init: {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": cfg.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: cfg.model,
+          max_tokens: 2048,
+          system: system || undefined,
+          messages: rest,
+          stream: true,
+        }),
+      },
+    };
+  }
+
+  const wire = cfg.provider === "meta" ? mapRolesForMeta(messages) : messages;
+  return {
+    family: "openai",
+    url: `${cfg.baseUrl}/chat/completions`,
+    init: {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: wire,
+        stream: true,
+        // tool_choice "auto" is the only supported value on Meta — omit
+        // entirely and let the model decide.
+        ...(tools && tools.length > 0 ? { tools } : {}),
+      }),
+    },
+  };
+}
+
+function prepareComplete(
+  cfg: ProviderConfig,
+  messages: LlmMessage[],
+  maxTokens: number,
+  temperature: number,
+): PreparedRequest {
+  if (cfg.provider === "anthropic") {
+    const { system, rest } = splitSystem(messages);
+    return {
+      family: "anthropic",
+      url: `${cfg.baseUrl}/v1/messages`,
+      init: {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": cfg.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: cfg.model,
+          max_tokens: maxTokens,
+          temperature,
+          system: system || undefined,
+          messages: rest,
+        }),
+      },
+    };
+  }
+
+  const wire = cfg.provider === "meta" ? mapRolesForMeta(messages) : messages;
+  return {
+    family: "openai",
+    url: `${cfg.baseUrl}/chat/completions`,
+    init: {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        max_tokens: maxTokens,
+        temperature,
+        messages: wire,
+      }),
+    },
+  };
+}
+
+/* ── SSE parsing ───────────────────────────────────────────────────── */
 
 /** Yield raw `data:` payloads from an SSE response body. */
 async function* parseSse(res: Response): AsyncGenerator<string> {
@@ -141,78 +336,25 @@ async function* parseSse(res: Response): AsyncGenerator<string> {
   }
 }
 
-/**
- * Stream a chat completion, yielding text deltas as they arrive and a
- * final `tool_calls` event if the model wants tools executed. Tool
- * execution itself lives in the caller (see /api/chat) — this adapter
- * only speaks the wire format.
- */
-export async function* streamChatWithTools(
-  messages: LlmMessage[],
-  tools?: ToolSpec[],
+async function* consumeSseEvents(
+  res: Response,
+  family: "openai" | "anthropic",
 ): AsyncGenerator<StreamEvent> {
-  const { provider, apiKey, baseUrl, model } = config();
-  if (!apiKey.trim()) throw new Error("LLM_NOT_CONFIGURED");
+  // Accumulate streamed tool-call fragments by index (OpenAI family).
+  const pending = new Map<number, { id: string; name: string; args: string }>();
 
-  if (provider === "anthropic") {
-    // Tool calling not implemented for Anthropic — stream text only.
-    const { system, rest } = splitSystem(messages);
-    const res = await fetch(`${baseUrl}/v1/messages`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 2048,
-        system: system || undefined,
-        messages: rest,
-        stream: true,
-      }),
-    });
-    if (!res.ok)
-      throw new Error(`Anthropic ${res.status}: ${await safeErrorText(res)}`);
-    for await (const data of parseSse(res)) {
-      try {
+  for await (const data of parseSse(res)) {
+    try {
+      if (family === "anthropic") {
         const json = JSON.parse(data) as {
           type?: string;
           delta?: { text?: string };
         };
         if (json.type === "content_block_delta" && json.delta?.text)
           yield { type: "text", delta: json.delta.text };
-      } catch {
-        /* keep-alive or partial frame — skip */
+        continue;
       }
-    }
-    return;
-  }
 
-  // OpenAI-compatible (default; also Meta Model API / Muse Spark)
-  const wire = provider === "meta" ? mapRolesForMeta(messages) : messages;
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: wire,
-      stream: true,
-      // tool_choice "auto" is the only supported value — omit and let the
-      // model decide (explicit "auto" is also fine, but omitting is safest).
-      ...(tools && tools.length > 0 ? { tools } : {}),
-    }),
-  });
-  if (!res.ok)
-    throw new Error(`LLM ${res.status}: ${await safeErrorText(res)}`);
-
-  // Accumulate streamed tool-call fragments by index.
-  const pending = new Map<number, { id: string; name: string; args: string }>();
-  for await (const data of parseSse(res)) {
-    try {
       const json = JSON.parse(data) as {
         choices?: {
           delta?: {
@@ -237,7 +379,7 @@ export async function* streamChatWithTools(
         pending.set(tc.index, cur);
       }
     } catch {
-      /* skip malformed frame */
+      /* keep-alive or malformed frame — skip */
     }
   }
 
@@ -253,6 +395,63 @@ export async function* streamChatWithTools(
   }
 }
 
+/* ── Public streaming API with failover ────────────────────────────── */
+
+/**
+ * Stream a chat completion, yielding text deltas as they arrive and a
+ * final `tool_calls` event if the model wants tools executed. Tries the
+ * provider chain in order; failover happens only before the first token.
+ * Tool execution itself lives in the caller (see /api/chat).
+ */
+export async function* streamChatWithTools(
+  messages: LlmMessage[],
+  tools?: ToolSpec[],
+): AsyncGenerator<StreamEvent> {
+  const providers = chain();
+  if (providers.length === 0) throw new Error("LLM_NOT_CONFIGURED");
+
+  let lastError: unknown = null;
+
+  for (let i = 0; i < providers.length; i++) {
+    const cfg = providers[i];
+    let res: Response;
+    let prep: PreparedRequest;
+    try {
+      prep = prepareStream(cfg, messages, tools);
+      res = await fetchWithHeaderTimeout(
+        prep.url,
+        prep.init,
+        CONNECT_TIMEOUT_MS,
+      );
+    } catch (err) {
+      lastError = err;
+      console.error(
+        `[llm] provider ${i} (${cfg.provider}/${cfg.model}) unreachable:`,
+        err instanceof Error ? err.message : err,
+      );
+      continue; // failover
+    }
+
+    if (!res.ok) {
+      lastError = new Error(
+        `${cfg.provider} ${res.status}: ${await safeErrorText(res)}`,
+      );
+      console.error(
+        `[llm] provider ${i} (${cfg.provider}/${cfg.model}) failed → trying next` +
+          (i < providers.length - 1 ? "" : " (none left)"),
+      );
+      continue; // failover
+    }
+
+    // Headers OK — this provider owns the stream now. Any failure after
+    // the first token is surfaced, never retried on another provider.
+    for await (const ev of consumeSseEvents(res, prep.family)) yield ev;
+    return;
+  }
+
+  throw lastError ?? new Error("LLM_UNAVAILABLE");
+}
+
 /** Text-only convenience wrapper over streamChatWithTools. */
 export async function* streamChat(
   messages: LlmMessage[],
@@ -262,62 +461,52 @@ export async function* streamChat(
   }
 }
 
-/** Single-shot completion (used by the memory summarizer + mail triage). */
+/** Single-shot completion (memory summarizer, mail triage) with failover. */
 export async function chatComplete(
   messages: LlmMessage[],
   opts?: { maxTokens?: number; temperature?: number },
 ): Promise<string> {
-  const { provider, apiKey, baseUrl, model } = config();
-  if (!apiKey.trim()) throw new Error("LLM_NOT_CONFIGURED");
+  const providers = chain();
+  if (providers.length === 0) throw new Error("LLM_NOT_CONFIGURED");
   const maxTokens = opts?.maxTokens ?? 1024;
   const temperature = opts?.temperature ?? 0.2;
 
-  if (provider === "anthropic") {
-    const { system, rest } = splitSystem(messages);
-    const res = await fetch(`${baseUrl}/v1/messages`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        temperature,
-        system: system || undefined,
-        messages: rest,
-      }),
-    });
-    if (!res.ok)
-      throw new Error(`Anthropic ${res.status}: ${await safeErrorText(res)}`);
-    const json = (await res.json()) as {
-      content?: { type: string; text?: string }[];
-    };
-    return (json.content ?? [])
-      .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
-      .join("")
-      .trim();
-  }
+  let lastError: unknown = null;
+  for (const cfg of providers) {
+    try {
+      const prep = prepareComplete(cfg, messages, maxTokens, temperature);
+      const res = await fetchWithHeaderTimeout(
+        prep.url,
+        prep.init,
+        CONNECT_TIMEOUT_MS,
+      );
+      if (!res.ok) {
+        lastError = new Error(
+          `${cfg.provider} ${res.status}: ${await safeErrorText(res)}`,
+        );
+        continue;
+      }
 
-  const wire = provider === "meta" ? mapRolesForMeta(messages) : messages;
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      temperature,
-      messages: wire,
-    }),
-  });
-  if (!res.ok)
-    throw new Error(`LLM ${res.status}: ${await safeErrorText(res)}`);
-  const json = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  return (json.choices?.[0]?.message?.content ?? "").trim();
+      if (prep.family === "anthropic") {
+        const json = (await res.json()) as {
+          content?: { type: string; text?: string }[];
+        };
+        return (json.content ?? [])
+          .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
+          .join("")
+          .trim();
+      }
+
+      const json = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      return (json.choices?.[0]?.message?.content ?? "").trim();
+    } catch (err) {
+      lastError = err;
+      console.error(
+        `[llm] background call via ${cfg.provider}/${cfg.model} failed → trying next`,
+      );
+    }
+  }
+  throw lastError ?? new Error("LLM_UNAVAILABLE");
 }

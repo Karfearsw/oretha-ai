@@ -8,7 +8,7 @@ Uncensored, Black-powered AI OS for work and creation — mobile-first. Chats, a
 - **Tailwind CSS v4** — design tokens in `src/app/globals.css`
 - **Prisma 7** + SQLite (`db/oretha.db`) via the libsql adapter — Postgres-ready schema
 - **Auth**: email + password (bcrypt), JWT session cookie (jose), httpOnly
-- **LLM**: provider-agnostic streaming (Meta Model API / Muse Spark by default, or any OpenAI-compatible API or Anthropic)
+- **LLM**: provider-agnostic streaming (Meta Model API / Muse Spark by default, or any OpenAI-compatible API or Anthropic) with automatic multi-provider failover
 - **Memory**: background summarization merges durable facts into `MEMORY.md` after each exchange
 - **Mailroom**: each agent gets her own AgentMail inbox — inbound email is triaged (task / reply / archive) onto the Task Board; chat tools (`check_mail`, `list_tasks`) follow the OpenAI/Meta function-calling loop
 - framer-motion, lucide-react
@@ -72,6 +72,14 @@ The chat is a real streaming completion call. Configure it with env vars — no 
 | `LLM_BASE_URL` | Optional override — Meta defaults to `https://api.meta.ai/v1`; point at Groq, Together, OpenRouter, or local Ollama |
 
 Her system prompt is composed per request from your five agent files (IDENTITY → SOUL → USER → RULES → MEMORY). After each exchange, a background call extracts durable facts and merges them into `MEMORY.md` — she learns you as you talk.
+
+**Secondary providers (failover).** Set `LLM_FALLBACKS` to a `;`-separated list of `provider::apiKey[::model][::baseUrl]` specs. If the primary fails before the first streamed token — rate limit, outage, bad key, 15s connect timeout — the next provider is tried automatically, in order. Recommended chain for the free tiers: Meta Muse Spark primary, Groq secondary, OpenRouter safety net:
+
+```bash
+LLM_FALLBACKS="groq::gsk_yourkey::llama-3.3-70b-versatile;openrouter::sk-or-yourkey::meta-llama/llama-3.3-70b-instruct:free"
+```
+
+Once a provider starts streaming, the stream is never switched mid-flight — a mid-stream failure surfaces to the user instead of silently splicing two models' outputs.
 
 With no key set, the UI degrades gracefully: the composer shows a setup hint instead of failing silently.
 

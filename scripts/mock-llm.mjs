@@ -14,6 +14,10 @@ import http from "node:http";
 
 const PORT = process.env.MOCK_LLM_PORT ?? 4000;
 
+/* Chaos mode: MOCK_LLM_CHAOS=50 makes ~50% of requests fail with 503
+ * so the app's provider-failover logic can be tested end to end. */
+const CHAOS = Number(process.env.MOCK_LLM_CHAOS ?? 0);
+
 function sseChunks(res, text) {
   res.writeHead(200, {
     "content-type": "text/event-stream",
@@ -74,6 +78,12 @@ const server = http.createServer((req, res) => {
     try {
       parsed = JSON.parse(body);
     } catch {}
+
+    if (CHAOS > 0 && Math.random() * 100 < CHAOS) {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "mock chaos: provider down" } }));
+      return;
+    }
 
     const wantsTools = Array.isArray(parsed.tools) && parsed.tools.length > 0;
     const lastUser = [...(parsed.messages ?? [])]
