@@ -42,3 +42,12 @@
 
 - Straight talk, no hedging. Copy is placeholder for the user to rewrite; keep structure locked.
 - "Black empowerment mode" toggle and uncensored positioning are core product identity — never water down the voice.
+
+## Mailroom + chat tools (2026-09-13)
+
+- AgentMail client `src/lib/agentmail.ts` (Bearer am_…, AGENTMAIL_BASE_URL override for local mock on :4100). Keys stored AES-256-GCM (derived from AUTH_SECRET) in Mailbox table.
+- Connect: setup step 6 or /office/inbox → POST /api/mail/connect → provisions the agent OWN inbox (idempotent client_id `oretha-inbox-<userId>`).
+- Triage: `src/lib/mailroom.ts` — sync lists 25 newest, LLM verdict per email (task/reply/archive JSON), task verdicts create Task rows (assignee mailroom). /api/mail/action converts manually.
+- Chat tools: `src/lib/tools.ts` (check_mail, list_tasks) via `streamChatWithTools` in llm.ts — OpenAI-format streamed tool_calls, Meta cookbook loop in /api/chat (max 3 turns), tool_call_supported() gates Anthropic off.
+- E2E verified with scripts/mock-agentmail.mjs + mock-llm tool path: chat "check my mail" → tool call → sync → triage → task "Pay invoice #4471" on board.
+- Gotchas: env changes need `npm run build` before `next start` sees them; mock JSON-body matchers must match escaped quotes.
