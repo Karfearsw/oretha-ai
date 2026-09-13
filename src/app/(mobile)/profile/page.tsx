@@ -17,6 +17,8 @@ import {
   KeyRound,
   Loader2,
   Zap,
+  X,
+  ExternalLink,
 } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { FileSheet } from "@/components/ui/FileSheet";
@@ -24,7 +26,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { useSessionUser } from "@/components/layout/AppShell";
-import { CONNECTORS } from "@/lib/mock/content";
+import Link from "next/link";
 import { generateAgentFiles } from "@/lib/agentFiles";
 
 const FILE_META: Record<string, { icon: typeof FileText; desc: string }> = {
@@ -67,6 +69,27 @@ export default function ProfilePage() {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
 
+  // Connectors
+  interface ConnectorRow {
+    id: string;
+    name: string;
+    desc: string;
+    keyConnectable: boolean;
+    oauthOnly: boolean;
+    connected: boolean;
+    meta: Record<string, unknown> | null;
+    lastSyncAt: string | null;
+    lastSyncInfo: string | null;
+    keyHint?: string;
+    keyUrl?: string;
+  }
+  const [connectors, setConnectors] = useState<ConnectorRow[]>([]);
+  const [connOpen, setConnOpen] = useState(false);
+  const [connKind, setConnKind] = useState<string>("github");
+  const [connKey, setConnKey] = useState("");
+  const [connBusy, setConnBusy] = useState(false);
+  const [connError, setConnError] = useState<string | null>(null);
+
   const agentName = user?.agentName || "Oretha";
   const first = (user?.name ?? "friend").split(" ")[0];
 
@@ -103,6 +126,12 @@ export default function ProfilePage() {
       .then((d) => {
         if (d?.settings) setLlm(d.settings);
         if (d?.providers) setProviders(d.providers);
+      })
+      .catch(() => {});
+    fetch("/api/connectors")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (Array.isArray(d?.connectors)) setConnectors(d.connectors);
       })
       .catch(() => {});
   }, []);
@@ -167,6 +196,43 @@ export default function ProfilePage() {
     } finally {
       setKeySaving(false);
     }
+  }
+
+  async function connectConnector() {
+    if (connBusy) return;
+    setConnBusy(true);
+    setConnError(null);
+    try {
+      const r = await fetch("/api/connectors", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: connKind, apiKey: connKey.trim() }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) {
+        setConnError(
+          d?.error === "not_key_connectable"
+            ? "This connector doesn't take a key."
+            : (d?.error ?? "Validation failed — check the key."),
+        );
+        return;
+      }
+      // Connected — sync right away so work lands on the board.
+      await fetch("/api/connectors/sync", { method: "POST" }).catch(() => {});
+      const fresh = await fetch("/api/connectors").then((x) => x.json()).catch(() => null);
+      if (Array.isArray(fresh?.connectors)) setConnectors(fresh.connectors);
+      setConnOpen(false);
+      setKeyNote("Connected — syncing work to the task board.");
+      setTimeout(() => setKeyNote(null), 5000);
+    } finally {
+      setConnBusy(false);
+    }
+  }
+
+  async function disconnectConnector(kind: string) {
+    await fetch(`/api/connectors?kind=${kind}`, { method: "DELETE" });
+    const fresh = await fetch("/api/connectors").then((x) => x.json()).catch(() => null);
+    if (Array.isArray(fresh?.connectors)) setConnectors(fresh.connectors);
   }
 
   async function upgrade(toPlan: "free" | "pro") {
@@ -361,7 +427,7 @@ export default function ProfilePage() {
         <h2 className="flex items-center gap-2 font-display text-[16px] font-bold text-cream">
           <Plug size={16} className="text-gold" /> Connectors
         </h2>
-        {CONNECTORS.map((c) => (
+        {connectors.map((c) => (
           <div
             key={c.id}
             className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-elevated p-3.5"
@@ -371,14 +437,63 @@ export default function ProfilePage() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[14px] font-semibold text-cream">{c.name}</p>
-              <p className="truncate text-[12px] text-clay">{c.desc}</p>
+              <p className="truncate text-[12px] text-clay">
+                {c.connected && c.id === "email" && c.meta?.address
+                  ? String(c.meta.address)
+                  : c.connected && c.meta?.login
+                    ? `@${String(c.meta.login)}`
+                    : c.connected && c.meta?.name
+                      ? String(c.meta.name)
+                      : c.desc}
+              </p>
+              {c.connected && c.lastSyncInfo && c.lastSyncInfo !== "mailroom" && (
+                <p className="truncate text-[11px] text-clay/70">
+                  Last sync: {c.lastSyncInfo}
+                </p>
+              )}
             </div>
             {c.connected ? (
-              <Chip tone="complete">
-                <Check size={11} /> Linked
-              </Chip>
+              c.id === "email" ? (
+                <Link
+                  href="/office/inbox"
+                  className="rounded-full border border-white/10 px-3 py-1.5 text-[12px] font-semibold text-sand"
+                >
+                  Open
+                </Link>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <Chip tone="complete">
+                    <Check size={11} /> Linked
+                  </Chip>
+                  <button
+                    aria-label={`Disconnect ${c.name}`}
+                    onClick={() => disconnectConnector(c.id)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-clay transition hover:text-alert"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )
+            ) : c.oauthOnly ? (
+              <Chip tone="neutral">Soon</Chip>
+            ) : c.id === "email" ? (
+              <Link
+                href="/office/inbox"
+                className="rounded-full border border-gold/40 bg-gold/10 px-3 py-1.5 text-[12px] font-semibold text-gold"
+              >
+                Set up
+              </Link>
             ) : (
-              <Button variant="ghost" size="sm">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setConnKind(c.id);
+                  setConnKey("");
+                  setConnError(null);
+                  setConnOpen(true);
+                }}
+              >
                 Connect
               </Button>
             )}
@@ -496,6 +611,56 @@ export default function ProfilePage() {
               >
                 Remove
               </Button>
+            )}
+          </div>
+        </div>
+      </Sheet>
+
+      {/* Connector connect sheet */}
+      <Sheet open={connOpen} onClose={() => setConnOpen(false)} title={`Connect ${connectors.find(c => c.id === connKind)?.name ?? ""}`}>
+        <div className="flex flex-col gap-3.5 pb-4">
+          <p className="text-[12.5px] leading-snug text-sand">
+            Paste a {connectors.find(c => c.id === connKind)?.keyHint ?? "API key"}. We
+            verify it live, store it encrypted (AES-256-GCM), and pull your
+            assigned work onto the task board.
+          </p>
+
+          <input
+            type="password"
+            autoComplete="off"
+            value={connKey}
+            onChange={(e) => setConnKey(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && connectConnector()}
+            placeholder="Paste your key"
+            className="w-full rounded-[14px] border border-white/10 bg-canvas p-3.5 font-mono text-[14px] text-cream outline-none placeholder:text-clay"
+          />
+
+          {connError && (
+            <p className="rounded-[12px] border border-alert/30 bg-alert/10 px-3 py-2 text-[12px] leading-snug text-alert">
+              {connError}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              variant="gradient"
+              size="md"
+              onClick={connectConnector}
+              loading={connBusy}
+              disabled={connBusy || connKey.trim().length < 8}
+            >
+              {connBusy ? <Loader2 size={16} className="animate-spin" /> : <Plug size={16} />}
+              Verify & connect
+            </Button>
+            {connectors.find((c) => c.id === connKind)?.keyUrl && (
+              <a
+                href={connectors.find((c) => c.id === connKind)?.keyUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 rounded-full border border-white/10 px-4 py-2.5 text-[13px] font-semibold text-sand"
+              >
+                Get key <ExternalLink size={13} />
+              </a>
             )}
           </div>
         </div>

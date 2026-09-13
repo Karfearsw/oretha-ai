@@ -86,6 +86,26 @@ export default function OfficeHomePage() {
         }
       } catch {}
 
+      // Real signal: connector sync errors (e.g. expired GitHub token)
+      try {
+        const c = await fetch("/api/connectors");
+        if (c.ok) {
+          const d = await c.json();
+          const broken = (d.connectors ?? []).filter(
+            (x: { connected: boolean; lastSyncInfo: string | null }) =>
+              x.connected && x.lastSyncInfo?.startsWith("error:"),
+          );
+          for (const b of broken.slice(0, 2))
+            alerts.push({
+              icon: GitPullRequest,
+              text: `${b.name} sync failed — reconnect it in Settings`,
+              time: "now",
+              href: "/profile",
+              tone: "alert",
+            });
+        }
+      } catch {}
+
       // Real signal: board size + untriaged mail
       try {
         const [t, m] = await Promise.all([fetch("/api/tasks"), fetch("/api/mail/sync")]);

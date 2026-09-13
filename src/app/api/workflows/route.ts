@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 
-const ACTIONS = ["mail_triage", "custom_prompt"] as const;
+const ACTIONS = ["mail_triage", "connector_sync", "custom_prompt"] as const;
 const SCHEDULES = ["hourly", "daily", "weekly"] as const;
 const MAX_WORKFLOWS = 20;
 

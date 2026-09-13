@@ -94,7 +94,11 @@ const server = http.createServer((req, res) => {
       (m) => m.role === "tool",
     );
 
-    // Tool call? Only when tools are offered and the user mentions mail.
+    // Tool call? Only when tools are offered and the user mentions mail or connectors.
+    if (wantsTools && !sawToolResult && /\bgithub\b|\blinear\b|connector/i.test(lastContent)) {
+      sseToolCall(res, "sync_connectors");
+      return;
+    }
     if (wantsTools && !sawToolResult && /mail|inbox|email/i.test(lastContent)) {
       sseToolCall(res, "check_mail");
       return;
@@ -104,7 +108,10 @@ const server = http.createServer((req, res) => {
       sseChunks(
         res,
         sawToolResult
-          ? "Checked the mailroom — the mock sync ran and any new email is triaged on the board."
+          ? /github|linear|connector/i.test(lastUser?.content ?? "") ||
+            JSON.stringify(parsed.messages).includes("sync_connectors")
+            ? "Pulled your GitHub and Linear work — any new assigned items are on the board now."
+            : "Checked the mailroom — the mock sync ran and any new email is triaged on the board."
           : "Understood — the mock is answering so you can test the full loop. Wire a real key whenever you're ready and I'll sound like myself.",
       );
       return;

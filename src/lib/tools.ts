@@ -3,14 +3,17 @@
  * the chat route executes each call here and feeds results back as `tool`
  * messages, looping until the model answers in plain text.
  *
- * Two tools:
- *  - check_mail:  syncs the user's AgentMail inbox, triages new email
- *                 (LLM verdict per email), returns a summary.
- *  - list_tasks:  returns the user's current Task board rows.
+ * Three tools:
+ *  - check_mail:       syncs the user's AgentMail inbox, triages new email
+ *                      (LLM verdict per email), returns a summary.
+ *  - list_tasks:       returns the user's current Task board rows.
+ *  - sync_connectors:  pulls assigned GitHub issues/PRs and Linear issues
+ *                      onto the board.
  */
 
 import { prisma } from "@/lib/prisma";
 import { syncAllMailboxes } from "@/lib/mailroom";
+import { syncAllConnectors } from "@/lib/connectors";
 
 export interface ToolCall {
   id: string;
@@ -46,6 +49,15 @@ export const TOOLS: ToolSpec[] = [
       name: "list_tasks",
       description:
         "List the user's current task board rows (title, lane, priority, due, assignee). Use when the user asks what's on the board.",
+      parameters: { type: "object", properties: {}, required: [] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "sync_connectors",
+      description:
+        "Pull the user's assigned work from connected services (GitHub issues and review-requested PRs, Linear issues) onto the task board. Use when the user asks to check GitHub/Linear, sync connectors, or update the board from external tools.",
       parameters: { type: "object", properties: {}, required: [] },
     },
   },
@@ -94,6 +106,25 @@ export async function executeTool(
           priority: t.priority,
           due: t.due,
           assignee: t.assigneeId,
+        })),
+      });
+    }
+
+    if (name === "sync_connectors") {
+      const results = await syncAllConnectors(userId);
+      if (results.length === 0) {
+        return JSON.stringify({
+          status: "no_connectors",
+          message:
+            "No connectors are linked yet — GitHub or Linear can be connected in Settings → Connectors.",
+        });
+      }
+      return JSON.stringify({
+        status: "ok",
+        connectors: results.map((r) => ({
+          kind: r.kind,
+          created: r.created,
+          ...(r.error ? { error: r.error } : {}),
         })),
       });
     }

@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { chatComplete } from "@/lib/llm";
 import { buildSystemMessages } from "@/lib/systemPrompt";
 import { syncAllMailboxes } from "@/lib/mailroom";
+import { syncAllConnectors } from "@/lib/connectors";
 
 const SCHEDULE_MS: Record<string, number> = {
   hourly: 3600_000,
@@ -43,6 +44,17 @@ async function runWorkflow(
     const fetched = results.reduce((n, r) => n + r.fetched, 0);
     const tasks = results.reduce((n, r) => n + r.tasks, 0);
     return `Swept ${results.length} inbox${results.length === 1 ? "" : "es"}: ${fetched} new email${fetched === 1 ? "" : "s"}, ${tasks} task${tasks === 1 ? "" : "s"} landed on the board.`;
+  }
+
+  if (workflow.action === "connector_sync") {
+    const results = await syncAllConnectors(workflow.userId);
+    if (results.length === 0)
+      return "No connectors linked — add GitHub or Linear in Settings → Connectors.";
+    const created = results.reduce((n, r) => n + r.created, 0);
+    const parts = results.map(
+      (r) => `${r.kind}${r.error ? ` (error: ${r.error})` : `: +${r.created}`}`,
+    );
+    return `Connector sweep — ${created} new task${created === 1 ? "" : "s"}. ${parts.join(" · ")}`;
   }
 
   if (workflow.action === "custom_prompt" && workflow.prompt?.trim()) {

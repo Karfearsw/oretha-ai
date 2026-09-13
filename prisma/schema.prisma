@@ -41,6 +41,7 @@ model User {
   mailboxes  Mailbox[]
   tasks      Task[]
   workflows  Workflow[]
+  connectors Connector[]
 }
 
 model AgentFile {
@@ -140,10 +141,13 @@ model Task {
   priority   String        @default("med")
   due        String?
   emailId    String?       @unique
+  remoteKey  String?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   email      EmailMessage? @relation(fields: [emailId], references: [id])
+
+  @@unique([userId, remoteKey])
 }
 
 /* ── Workflows: scheduled automations (run by the sweep) ───────────── */
@@ -173,4 +177,25 @@ model WorkflowRun {
   workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
   @@index([workflowId, createdAt])
+}
+
+/* ── Connectors: user-linked external services (GitHub, Linear, …) ────
+ * Tokens are AES-256-GCM-encrypted at rest (same scheme as mailbox and
+ * BYOK-LLM keys). One row per user per service kind. */
+
+model Connector {
+  id           String    @id @default(cuid())
+  userId       String
+  kind         String
+  tokenCipher  String
+  iv           String
+  authTag      String
+  meta         String    @default("{}")
+  lastSyncAt   DateTime?
+  lastSyncInfo String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind])
 }

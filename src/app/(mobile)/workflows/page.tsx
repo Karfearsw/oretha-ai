@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   XCircle,
   Mail,
+  Plug,
   Sparkles,
   Clock,
 } from "lucide-react";
@@ -39,6 +40,7 @@ interface RunRow {
 
 const ACTION_LABEL: Record<string, string> = {
   mail_triage: "Triage my mail",
+  connector_sync: "Pull GitHub & Linear work",
   custom_prompt: "Run a custom prompt",
 };
 
@@ -64,7 +66,9 @@ export default function WorkflowsPage() {
 
   // create form
   const [name, setName] = useState("");
-  const [action, setAction] = useState<"mail_triage" | "custom_prompt">("mail_triage");
+  const [action, setAction] = useState<
+    "mail_triage" | "connector_sync" | "custom_prompt"
+  >("mail_triage");
   const [prompt, setPrompt] = useState("");
   const [schedule, setSchedule] = useState<(typeof SCHEDULES)[number]>("daily");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -341,8 +345,8 @@ export default function WorkflowsPage() {
 
           <div>
             <p className="mb-2 text-[13px] font-semibold text-sand">Action</p>
-            <div className="grid grid-cols-2 gap-2">
-              {(["mail_triage", "custom_prompt"] as const).map((a) => (
+            <div className="grid grid-cols-3 gap-2">
+              {(["mail_triage", "connector_sync", "custom_prompt"] as const).map((a) => (
                 <button
                   key={a}
                   onClick={() => setAction(a)}
@@ -351,17 +355,25 @@ export default function WorkflowsPage() {
                   }`}
                 >
                   <span
-                    className={`flex items-center gap-1.5 text-[14px] font-semibold ${
+                    className={`flex items-center gap-1.5 text-[13.5px] font-semibold ${
                       action === a ? "text-gold" : "text-cream"
                     }`}
                   >
-                    {a === "mail_triage" ? <Mail size={14} /> : <Sparkles size={14} />}
+                    {a === "mail_triage" ? (
+                      <Mail size={14} />
+                    ) : a === "connector_sync" ? (
+                      <Plug size={14} />
+                    ) : (
+                      <Sparkles size={14} />
+                    )}
                     {ACTION_LABEL[a]}
                   </span>
                   <span className="mt-1 block text-[11.5px] leading-snug text-clay">
                     {a === "mail_triage"
                       ? "Sync + triage every inbox onto the board"
-                      : "Your agent runs a prompt you write"}
+                      : a === "connector_sync"
+                        ? "Pull assigned GitHub & Linear work"
+                        : "Your agent runs a prompt you write"}
                   </span>
                 </button>
               ))}
