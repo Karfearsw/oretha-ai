@@ -68,3 +68,10 @@
 - sync_connectors chat tool + connector_sync workflow action; office alerts show connector sync errors.
 - Env overrides for local mocks: GITHUB_API_BASE, LINEAR_API_BASE (scripts/mock-connectors.mjs on :4200). REMOVE BOTH FROM .env.local BEFORE RELYING ON LOCAL PROD TESTING; never set in Vercel.
 - Turso migration 20260913180000_connectors applied.
+
+## Icons + iOS launch screens (2026-09-13)
+
+- ALL OS icon slots are fully opaque (minAlpha 255): iOS composites transparent icon corners onto WHITE — that was the home-screen white surround. make-icons.mjs fills every icon with the source screenshot's own field color; only in-app oretha-mark.png keeps alpha.
+- iOS PWA splash: public/splash/apple-splash-*.png (19 devices x 2 orientations) + exact-match apple-touch-startup-image links emitted from layout.tsx via src/lib/iosDevices.ts (shared device table; script imports it). New iPhone model => add row + rerun node scripts/make-icons.mjs.
+- Users must DELETE old home-screen installs and re-Add to Home Screen — iOS caches icons/splash per install.
+- Local preview must run `next start` (next dev crashes: UnhandledSchemeError node:crypto in client graph via agentmail.ts).
