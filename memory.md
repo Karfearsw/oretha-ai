@@ -75,3 +75,11 @@
 - iOS PWA splash: public/splash/apple-splash-*.png (19 devices x 2 orientations) + exact-match apple-touch-startup-image links emitted from layout.tsx via src/lib/iosDevices.ts (shared device table; script imports it). New iPhone model => add row + rerun node scripts/make-icons.mjs.
 - Users must DELETE old home-screen installs and re-Add to Home Screen — iOS caches icons/splash per install.
 - Local preview must run `next start` (next dev crashes: UnhandledSchemeError node:crypto in client graph via agentmail.ts).
+
+## Deploy blocker fixed + full-bleed icon (2026-09-14)
+
+- ROOT CAUSE of all failed Vercel deploys: prisma.ts constructed the client at import time and threw without DATABASE_URL during next build page-data collection. FIXED: lazy Proxy client (init on first property access, same loud error at runtime). Build now passes env-less.
+- dev `next dev` node:crypto 500 fix: instrumentation.ts must keep the dynamic import LEXICALLY INSIDE the `if (process.env.NEXT_RUNTIME === "nodejs")` block — code outside the if (even after an early return) is still bundled for edge. Sweeper logic lives in src/lib/sweeper.ts. `next dev` works again; memory note above about needing `next start` is obsolete.
+- Icons rebuilt FULL-BLEED: square cover-crop of the portrait (photo pixels to every corner, 3-channel RGB, no alpha at all) — no more padded rectangle floating on a tile. oretha-mark.png is now an elliptical transparent cutout for in-app use. Icon/splash URLs cache-busted with ?v=2.
+- Verified: env-less build exit 0, tsc clean, icons pixel-checked, preview 200 on port 3210 (detached, log .freebuff/preview.log).
+- iOS still caches home-screen icons per install: delete the PWA and re-Add to Home Screen to see the new icon.
