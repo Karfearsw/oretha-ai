@@ -17,6 +17,7 @@
  */
 import sharp from "sharp";
 import { mkdirSync } from "node:fs";
+import { IOS_SPLASH_DEVICES, splashFile, splashFileLandscape } from "../src/lib/iosDevices.ts";
 
 const SRC = "public/oretha-logo.jpg";
 const BRIGHT = 40; // pixels brighter than this (any channel) are "mark"
@@ -133,6 +134,38 @@ async function main() {
     await sharp(await opaqueIcon(s, 0.72))
       .toFile(`public/icons/oretha-icon-${s}.png`);
   }
+
+  // 5. iOS launch screens: full-bleed field-color canvas, portrait mark
+  //    centered at a fixed 22% of the SHORT side (like a native launch
+  //    screen), slight violet-gold vignette glow behind the mark.
+  mkdirSync("public/splash", { recursive: true });
+  const markBase = await sharp(mark).png().toBuffer();
+  for (const d of IOS_SPLASH_DEVICES) {
+    for (const [w, h, file] of [
+      [d.pw, d.ph, splashFile(d)],
+      [d.ph, d.pw, splashFileLandscape(d)],
+    ]) {
+      const markPx = Math.round(Math.min(w, h) * 0.22);
+      const scaled = await sharp(markBase)
+        .resize(markPx, markPx, { fit: "inside" })
+        .png()
+        .toBuffer();
+      await sharp({
+        create: {
+          width: w,
+          height: h,
+          channels: 4,
+          background: { r: field[0], g: field[1], b: field[2], alpha: 1 },
+        },
+      })
+        .composite([{ input: scaled, gravity: "center" }])
+        .png()
+        .toFile(`public/splash/${file}`);
+    }
+  }
+  console.log(
+    `wrote public/splash/* (${IOS_SPLASH_DEVICES.length} devices x 2 orientations)`
+  );
 
   console.log("wrote public/oretha-mark.png (transparent) + public/icons/* (all opaque)");
 }

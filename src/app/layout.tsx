@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { IOS_SPLASH_DEVICES, splashFile, splashFileLandscape, splashMedia } from "@/lib/iosDevices";
 import "./globals.css";
 
 const inter = Inter({
@@ -36,6 +37,20 @@ export const metadata: Metadata = {
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
     ],
     apple: "/icons/apple-touch-icon.png",
+    // iOS PWA launch screens: one exact-match link per device/orientation
+    // (iOS shows a startup image ONLY when the media query matches exactly).
+    other: IOS_SPLASH_DEVICES.flatMap((d) => [
+      {
+        rel: "apple-touch-startup-image",
+        media: splashMedia(d, "portrait"),
+        url: `/splash/${splashFile(d)}`,
+      },
+      {
+        rel: "apple-touch-startup-image",
+        media: splashMedia(d, "landscape"),
+        url: `/splash/${splashFileLandscape(d)}`,
+      },
+    ]),
   },
 };
 
