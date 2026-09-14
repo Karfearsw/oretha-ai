@@ -92,6 +92,10 @@
   }
 }
 
+@utility oretha-glow {
+  filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.28));
+}
+
 @utility pad-safe-top {
   padding-top: var(--safe-top);
 }

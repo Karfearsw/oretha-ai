@@ -3,15 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Image as ImageIcon,
-  Clapperboard,
-  Music,
-  Layers,
-  Wand2,
-  KeyRound,
-  Sparkles,
-} from "lucide-react";
+import { OrethaIcon, type OrethaIconName } from "@/components/brand/OrethaIcon";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import type { SegmentItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/Button";
@@ -19,10 +11,10 @@ import { Button } from "@/components/ui/Button";
 type Mode = "images" | "video" | "music" | "social";
 
 const MODES: SegmentItem<Mode>[] = [
-  { value: "images", label: "Images", icon: ImageIcon },
-  { value: "video", label: "Video", icon: Clapperboard },
-  { value: "music", label: "Music", icon: Music },
-  { value: "social", label: "Social", icon: Layers },
+  { value: "images", label: "Images", icon: "images" as OrethaIconName },
+  { value: "video", label: "Video", icon: "video" as OrethaIconName },
+  { value: "music", label: "Music", icon: "music" as OrethaIconName },
+  { value: "social", label: "Social", icon: "social" as OrethaIconName },
 ];
 
 const MODE_COPY: Record<Mode, string> = {
@@ -86,7 +78,7 @@ export default function MediaLabPage() {
               className="flex flex-col items-center gap-3 px-8 text-center"
             >
               <span className="flex h-14 w-14 items-center justify-center rounded-full border border-gold/30 bg-gold/10">
-                <KeyRound size={22} className="text-gold" />
+                <OrethaIcon name="media" size={24} tone="gold" active glow />
               </span>
               <p className="font-display text-[15px] font-bold text-cream">
                 {MODE_COPY[mode]} needs a generation provider
@@ -116,7 +108,7 @@ export default function MediaLabPage() {
           loading={sending}
           disabled={!prompt.trim()}
         >
-          <Wand2 size={18} /> Send to the crew
+          <OrethaIcon name="media" size={18} tone="gold" /> Send to the crew
         </Button>
       </section>
 
@@ -144,7 +136,7 @@ export default function MediaLabPage() {
           Recent outputs
         </h2>
         <div className="flex items-center gap-3 rounded-[16px] border border-dashed border-white/10 p-5">
-          <Sparkles size={18} className="shrink-0 text-gold" />
+          <OrethaIcon name="guides" size={18} tone="gold" />
           <p className="text-[12.5px] leading-snug text-clay">
             Nothing rendered yet. Connect a generation provider and every
             output collects here with its prompt — replayable and remixable.

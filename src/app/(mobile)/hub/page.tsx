@@ -3,13 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import {
-  MessagesSquare,
-  Building2,
-  Workflow,
-  Wand2,
-  BookOpen,
-} from "lucide-react";
+import type { OrethaIconName } from "@/components/brand/OrethaIcon";
 import { HeroBanner } from "@/components/hub/HeroBanner";
 import { FeatureCard } from "@/components/hub/FeatureCard";
 import { PulseMetricCard } from "@/components/hub/PulseMetricCard";
@@ -24,31 +18,31 @@ const FEATURES = [
   {
     title: "Chats & Agents",
     desc: "Talk it out or put an agent on it.",
-    icon: MessagesSquare,
+    iconName: "chats" as OrethaIconName,
     href: "/chats",
   },
   {
     title: "KEVO Office",
     desc: "Your virtual office control room.",
-    icon: Building2,
+    iconName: "office" as OrethaIconName,
     href: "/office",
   },
   {
     title: "Workflows",
     desc: "Automations that run while you sleep.",
-    icon: Workflow,
+    iconName: "workflows" as OrethaIconName,
     href: "/workflows",
   },
   {
     title: "Media Lab",
     desc: "Creative studio with your agent.",
-    icon: Wand2,
+    iconName: "media" as OrethaIconName,
     href: "/media",
   },
   {
     title: "Guides & Playbooks",
     desc: "Runbooks for real estate, recon, and content sprints.",
-    icon: BookOpen,
+    iconName: "guides" as OrethaIconName,
     href: "/guides",
     full: true,
   },
