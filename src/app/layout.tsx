@@ -33,22 +33,22 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/icons/icon-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-32.png?v=2", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192.png?v=2", sizes: "192x192", type: "image/png" },
     ],
-    apple: "/icons/apple-touch-icon.png",
+    apple: "/icons/apple-touch-icon.png?v=2",
     // iOS PWA launch screens: one exact-match link per device/orientation
     // (iOS shows a startup image ONLY when the media query matches exactly).
     other: IOS_SPLASH_DEVICES.flatMap((d) => [
       {
         rel: "apple-touch-startup-image",
         media: splashMedia(d, "portrait"),
-        url: `/splash/${splashFile(d)}`,
+        url: `/splash/${splashFile(d)}?v=2`,
       },
       {
         rel: "apple-touch-startup-image",
         media: splashMedia(d, "landscape"),
-        url: `/splash/${splashFileLandscape(d)}`,
+        url: `/splash/${splashFileLandscape(d)}?v=2`,
       },
     ]),
   },

@@ -1,30 +1,16 @@
-/* Local workflow sweeper: runs the due-workflow sweep every 5 minutes
- * while the server is up (complements the Vercel cron in production). */
-
+/* Local workflow sweeper bootstrap.
+ *
+ * Next.js compiles this file for BOTH runtimes (node + edge). The dynamic
+ * import MUST sit lexically inside the `if` block: NEXT_RUNTIME is inlined
+ * at build time, so the edge copy dead-code-eliminates the branch and never
+ * bundles the node-only sweeper (which pulls node:crypto through the
+ * scheduler/mailroom/agentmail chain). An import outside the if — even one
+ * guarded by an early return — is still bundled for edge and 500s every
+ * route with "Reading from node:crypto is not handled by plugins".
+ */
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const g = globalThis as { __orethaSweeper?: boolean };
-  if (g.__orethaSweeper) return;
-  g.__orethaSweeper = true;
-
-  const SWEEP_INTERVAL_MS = 5 * 60_000;
-
-  const tick = async () => {
-    try {
-      const { sweepDueWorkflows } = await import("@/lib/scheduler");
-      const result = await sweepDueWorkflows();
-      if (result.executed > 0)
-        console.log(
-          `[sweeper] executed ${result.executed} workflow(s):`,
-          result.results.map((r) => `${r.workflow}=${r.status}`).join(", "),
-        );
-    } catch (err) {
-      console.error("[sweeper] sweep failed:", err);
-    }
-  };
-
-  // First sweep shortly after boot, then on an interval.
-  setTimeout(tick, 15_000);
-  setInterval(tick, SWEEP_INTERVAL_MS);
-  console.log("[sweeper] workflow sweeper armed (every 5 min)");
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { startSweeper } = await import("@/lib/sweeper");
+    startSweeper();
+  }
 }
