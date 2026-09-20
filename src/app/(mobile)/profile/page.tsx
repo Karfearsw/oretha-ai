@@ -76,10 +76,14 @@ export default function ProfilePage() {
     desc: string;
     keyConnectable: boolean;
     oauthOnly: boolean;
+    syncSupported: boolean;
     connected: boolean;
+    status: "connected" | "not_connected" | "error";
     meta: Record<string, unknown> | null;
     lastSyncAt: string | null;
     lastSyncInfo: string | null;
+    helpHref?: string | null;
+    manageUrl?: string;
     keyHint?: string;
     keyUrl?: string;
   }
@@ -217,12 +221,18 @@ export default function ProfilePage() {
         );
         return;
       }
-      // Connected — sync right away so work lands on the board.
-      await fetch("/api/connectors/sync", { method: "POST" }).catch(() => {});
+      const selected = connectors.find((c) => c.id === connKind);
+      if (selected?.syncSupported) {
+        await fetch("/api/connectors/sync", { method: "POST" }).catch(() => {});
+      }
       const fresh = await fetch("/api/connectors").then((x) => x.json()).catch(() => null);
       if (Array.isArray(fresh?.connectors)) setConnectors(fresh.connectors);
       setConnOpen(false);
-      setKeyNote("Connected — syncing work to the task board.");
+      setKeyNote(
+        selected?.syncSupported
+          ? "Connected — syncing supported work to the task board."
+          : "Connected securely — ready for future linked actions.",
+      );
       setTimeout(() => setKeyNote(null), 5000);
     } finally {
       setConnBusy(false);
@@ -230,9 +240,16 @@ export default function ProfilePage() {
   }
 
   async function disconnectConnector(kind: string) {
-    await fetch(`/api/connectors?kind=${kind}`, { method: "DELETE" });
+    const r = await fetch(`/api/connectors?kind=${kind}`, { method: "DELETE" });
+    const d = await r.json().catch(() => null);
     const fresh = await fetch("/api/connectors").then((x) => x.json()).catch(() => null);
     if (Array.isArray(fresh?.connectors)) setConnectors(fresh.connectors);
+    setKeyNote(
+      d?.kind
+        ? `${connectors.find((c) => c.id === d.kind)?.name ?? "Connector"} disconnected.`
+        : "Connector removed.",
+    );
+    setTimeout(() => setKeyNote(null), 5000);
   }
 
   async function upgrade(toPlan: "free" | "pro") {
@@ -436,67 +453,94 @@ export default function ProfilePage() {
               {c.name.charAt(0)}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-semibold text-cream">{c.name}</p>
+              <p className="flex items-center gap-2 text-[14px] font-semibold text-cream">
+                <span>{c.name}</span>
+                {c.status === "connected" ? (
+                  <Chip tone="complete">Connected</Chip>
+                ) : c.status === "error" ? (
+                  <Chip tone="alert">Error</Chip>
+                ) : (
+                  <Chip tone="neutral">Not connected</Chip>
+                )}
+              </p>
               <p className="truncate text-[12px] text-clay">
                 {c.connected && c.id === "email" && c.meta?.address
                   ? String(c.meta.address)
+                  : c.connected && c.meta?.email
+                    ? String(c.meta.email)
                   : c.connected && c.meta?.login
                     ? `@${String(c.meta.login)}`
                     : c.connected && c.meta?.name
                       ? String(c.meta.name)
                       : c.desc}
               </p>
-              {c.connected && c.lastSyncInfo && c.lastSyncInfo !== "mailroom" && (
+              {c.lastSyncInfo && c.lastSyncInfo !== "mailroom" && (
                 <p className="truncate text-[11px] text-clay/70">
-                  Last sync: {c.lastSyncInfo}
+                  {c.syncSupported ? `Last sync: ${c.lastSyncInfo}` : c.lastSyncInfo}
                 </p>
               )}
             </div>
-            {c.connected ? (
-              c.id === "email" ? (
-                <Link
-                  href="/office/inbox"
-                  className="rounded-full border border-white/10 px-3 py-1.5 text-[12px] font-semibold text-sand"
-                >
-                  Open
-                </Link>
-              ) : (
-                <div className="flex items-center gap-1.5">
-                  <Chip tone="complete">
-                    <Check size={11} /> Linked
-                  </Chip>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              {c.helpHref ? (
+                c.helpHref.startsWith("/") ? (
+                  <Link
+                    href={c.helpHref}
+                    className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-[12px] font-semibold text-sand"
+                  >
+                    Manage <ExternalLink size={12} />
+                  </Link>
+                ) : (
+                  <a
+                    href={c.helpHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-[12px] font-semibold text-sand"
+                  >
+                    Manage <ExternalLink size={12} />
+                  </a>
+                )
+              ) : null}
+
+              {c.connected ? (
+                c.id === "email" ? (
+                  <span className="rounded-full border border-white/10 px-3 py-1.5 text-[12px] font-semibold text-sand">
+                    Linked
+                  </span>
+                ) : (
                   <button
                     aria-label={`Disconnect ${c.name}`}
                     onClick={() => disconnectConnector(c.id)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-clay transition hover:text-alert"
+                    className="rounded-full border border-alert/30 bg-alert/10 px-3 py-1.5 text-[12px] font-semibold text-alert"
                   >
-                    <X size={14} />
+                    Disconnect
                   </button>
-                </div>
-              )
-            ) : c.oauthOnly ? (
-              <Chip tone="neutral">Soon</Chip>
-            ) : c.id === "email" ? (
-              <Link
-                href="/office/inbox"
-                className="rounded-full border border-gold/40 bg-gold/10 px-3 py-1.5 text-[12px] font-semibold text-gold"
-              >
-                Set up
-              </Link>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setConnKind(c.id);
-                  setConnKey("");
-                  setConnError(null);
-                  setConnOpen(true);
-                }}
-              >
-                Connect
-              </Button>
-            )}
+                )
+              ) : c.oauthOnly ? (
+                <span className="rounded-full border border-white/10 px-3 py-1.5 text-[12px] font-semibold text-clay">
+                  OAuth soon
+                </span>
+              ) : c.id === "email" ? (
+                <Link
+                  href="/office/inbox"
+                  className="rounded-full border border-gold/40 bg-gold/10 px-3 py-1.5 text-[12px] font-semibold text-gold"
+                >
+                  Set up
+                </Link>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setConnKind(c.id);
+                    setConnKey("");
+                    setConnError(null);
+                    setConnOpen(true);
+                  }}
+                >
+                  Connect
+                </Button>
+              )}
+            </div>
           </div>
         ))}
       </section>
@@ -621,9 +665,14 @@ export default function ProfilePage() {
         <div className="flex flex-col gap-3.5 pb-4">
           <p className="text-[12.5px] leading-snug text-sand">
             Paste a {connectors.find(c => c.id === connKind)?.keyHint ?? "API key"}. We
-            verify it live, store it encrypted (AES-256-GCM), and pull your
-            assigned work onto the task board.
+            verify it live and store it encrypted (AES-256-GCM). Secrets never
+            come back to the client or logs.
           </p>
+          {connectors.find((c) => c.id === connKind)?.syncSupported && (
+            <p className="rounded-[12px] border border-gold/20 bg-gold/10 px-3 py-2 text-[11.5px] leading-snug text-gold">
+              This provider can also sync supported work onto the task board.
+            </p>
+          )}
 
           <input
             type="password"

@@ -26,20 +26,29 @@ export async function GET() {
     if (c.id === "email") {
       return {
         ...c,
+        status: mailbox ? "connected" : "not_connected",
         connected: Boolean(mailbox),
         meta: mailbox ? { address: mailbox.address } : null,
         lastSyncAt: mailbox?.lastSyncAt?.toISOString() ?? null,
         lastSyncInfo: mailbox ? "mailroom" : null,
-        helpHref: mailbox ? "/office/inbox" : "/office/inbox",
+        helpHref: "/office/inbox",
       };
     }
     const row = byKind.get(c.id);
+    const status =
+      row?.lastSyncInfo && row.lastSyncInfo.startsWith("error:")
+        ? "error"
+        : row
+          ? "connected"
+          : "not_connected";
     return {
       ...c,
+      status,
       connected: Boolean(row),
       meta: row ? (JSON.parse(row.meta || "{}") as Record<string, unknown>) : null,
       lastSyncAt: row?.lastSyncAt?.toISOString() ?? null,
       lastSyncInfo: row?.lastSyncInfo ?? null,
+      helpHref: c.manageUrl ?? null,
     };
   });
 
@@ -60,7 +69,7 @@ export async function PUT(req: Request) {
   const kind = body?.kind as ConnectorKind;
   const apiKey = body?.apiKey?.trim();
 
-  if (!kind || !apiKey || apiKey.length < 8 || apiKey.length > 400)
+  if (!kind || !apiKey || apiKey.length < 8 || apiKey.length > 2000)
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
 
   const entry = CONNECTOR_CATALOG.find((c) => c.id === kind);
@@ -87,5 +96,5 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
 
   await deleteConnector(session.id, kind);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, kind });
 }

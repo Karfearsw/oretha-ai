@@ -1,15 +1,9 @@
-/* ── Connectors: real integrations with user-stored keys ──────────────
- * GitHub (PAT) and Linear (API key) are fully functional: keys are
- * live-validated at connect time, AES-256-GCM-encrypted at rest, and
- * synced (assigned issues / review-requested PRs) onto the Task Board
- * as idempotent rows (unique per user + remoteKey).
+/* ── Connectors: secure, account-level integrations ───────────────────
+ * Keys are validated live where feasible, then AES-256-GCM-encrypted at
+ * rest. Only a safe metadata subset comes back to the UI.
  *
- * Email is special: "connected" means the user's AgentMail mailbox
- * exists — state derives from the Mailbox table, no token here.
- *
- * Social/drive connectors (tiktok, youtube, instagram, drive) require
- * per-app OAuth; they are catalog entries with available=false until an
- * Oretha OAuth app exists for them.
+ * Sync support is narrower than connect support: today GitHub + Linear
+ * create task-board rows; the rest are verified/account-linked only.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -21,11 +15,45 @@ const GITHUB_API = (
 const LINEAR_API = (
   process.env.LINEAR_API_BASE ?? "https://api.linear.app/graphql"
 ).replace(/\/+$/, "");
+const VERCEL_API = (
+  process.env.VERCEL_API_BASE ?? "https://api.vercel.com"
+).replace(/\/+$/, "");
+const NEON_API = (
+  process.env.NEON_API_BASE ?? "https://console.neon.tech/api/v2"
+).replace(/\/+$/, "");
+const TELNYX_API = (
+  process.env.TELNYX_API_BASE ?? "https://api.telnyx.com/v2"
+).replace(/\/+$/, "");
+const STRIPE_API = (
+  process.env.STRIPE_API_BASE ?? "https://api.stripe.com/v1"
+).replace(/\/+$/, "");
+const OPENAI_API = (
+  process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1"
+).replace(/\/+$/, "");
+const GROQ_API = (
+  process.env.GROQ_API_BASE ?? "https://api.groq.com/openai/v1"
+).replace(/\/+$/, "");
+const ANTHROPIC_API = (
+  process.env.ANTHROPIC_API_BASE ?? "https://api.anthropic.com/v1"
+).replace(/\/+$/, "");
+const DISCORD_API = (
+  process.env.DISCORD_API_BASE ?? "https://discord.com/api/v10"
+).replace(/\/+$/, "");
 
 export type ConnectorKind =
   | "github"
   | "linear"
   | "email"
+  | "vercel"
+  | "neon"
+  | "telnyx"
+  | "gmail"
+  | "google_calendar"
+  | "stripe"
+  | "groq"
+  | "openai"
+  | "anthropic"
+  | "discord"
   | "drive"
   | "tiktok"
   | "youtube"
@@ -39,6 +67,10 @@ export interface ConnectorCatalogEntry {
   keyConnectable: boolean;
   /** Requires an Oretha OAuth app (not available yet). */
   oauthOnly: boolean;
+  /** Can create task-board rows. */
+  syncSupported: boolean;
+  /** External provider page for setup/manage. */
+  manageUrl?: string;
   keyHint?: string;
   keyUrl?: string;
 }
@@ -50,6 +82,8 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     desc: "Assigned issues + PRs awaiting your review → task board",
     keyConnectable: true,
     oauthOnly: false,
+    syncSupported: true,
+    manageUrl: "https://github.com/settings/apps",
     keyHint: "ghp_… token with repo + reads",
     keyUrl: "https://github.com/settings/tokens/new?scopes=repo,read:user",
   },
@@ -59,6 +93,8 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     desc: "Assigned issues → task board",
     keyConnectable: true,
     oauthOnly: false,
+    syncSupported: true,
+    manageUrl: "https://linear.app/settings/api",
     keyHint: "lin_api_… key",
     keyUrl: "https://linear.app/settings/api",
   },
@@ -68,6 +104,114 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     desc: "Inbox triage + task intake (agent mailroom)",
     keyConnectable: false,
     oauthOnly: false,
+    syncSupported: false,
+    manageUrl: "/office/inbox",
+  },
+  {
+    id: "vercel",
+    name: "Vercel",
+    desc: "Projects, deployments, and preview ownership",
+    keyConnectable: true,
+    oauthOnly: false,
+    syncSupported: false,
+    manageUrl: "https://vercel.com/account/tokens",
+    keyHint: "vercel token",
+    keyUrl: "https://vercel.com/account/tokens",
+  },
+  {
+    id: "neon",
+    name: "Neon",
+    desc: "Serverless Postgres projects and branch environments",
+    keyConnectable: true,
+    oauthOnly: false,
+    syncSupported: false,
+    manageUrl: "https://console.neon.tech/app/settings/api-keys",
+    keyHint: "Neon API key",
+    keyUrl: "https://console.neon.tech/app/settings/api-keys",
+  },
+  {
+    id: "telnyx",
+    name: "Telnyx",
+    desc: "Phone, messaging, and voice operations",
+    keyConnectable: true,
+    oauthOnly: false,
+    syncSupported: false,
+    manageUrl: "https://portal.telnyx.com/#/app/api-keys",
+    keyHint: "KEY... Telnyx API key",
+    keyUrl: "https://portal.telnyx.com/#/app/api-keys",
+  },
+  {
+    id: "gmail",
+    name: "Gmail",
+    desc: "Customer inbox and sender workflows",
+    keyConnectable: false,
+    oauthOnly: true,
+    syncSupported: false,
+    manageUrl: "https://myaccount.google.com/permissions",
+  },
+  {
+    id: "google_calendar",
+    name: "Google Calendar",
+    desc: "Calendar sync, scheduling, and meeting context",
+    keyConnectable: false,
+    oauthOnly: true,
+    syncSupported: false,
+    manageUrl: "https://myaccount.google.com/permissions",
+  },
+  {
+    id: "stripe",
+    name: "Stripe",
+    desc: "Payments, subscriptions, and revenue visibility",
+    keyConnectable: true,
+    oauthOnly: false,
+    syncSupported: false,
+    manageUrl: "https://dashboard.stripe.com/apikeys",
+    keyHint: "sk_... secret key",
+    keyUrl: "https://dashboard.stripe.com/apikeys",
+  },
+  {
+    id: "groq",
+    name: "Groq",
+    desc: "Fast inference and model access",
+    keyConnectable: true,
+    oauthOnly: false,
+    syncSupported: false,
+    manageUrl: "https://console.groq.com/keys",
+    keyHint: "gsk_... Groq API key",
+    keyUrl: "https://console.groq.com/keys",
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    desc: "Model access for completions and tools",
+    keyConnectable: true,
+    oauthOnly: false,
+    syncSupported: false,
+    manageUrl: "https://platform.openai.com/api-keys",
+    keyHint: "sk-... OpenAI API key",
+    keyUrl: "https://platform.openai.com/api-keys",
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    desc: "Claude model access and agent reasoning",
+    keyConnectable: true,
+    oauthOnly: false,
+    syncSupported: false,
+    manageUrl: "https://console.anthropic.com/settings/keys",
+    keyHint: "sk-ant-... Anthropic API key",
+    keyUrl: "https://console.anthropic.com/settings/keys",
+  },
+  {
+    id: "discord",
+    name: "Discord",
+    desc: "Community ops and bot automation",
+    keyConnectable: true,
+    oauthOnly: false,
+    syncSupported: false,
+    manageUrl: "https://discord.com/developers/applications",
+    keyHint: "Discord bot token",
+    keyUrl: "https://discord.com/developers/applications",
   },
   {
     id: "drive",
@@ -75,6 +219,8 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     desc: "Docs, sheets, assets",
     keyConnectable: false,
     oauthOnly: true,
+    syncSupported: false,
+    manageUrl: "https://drive.google.com/drive/my-drive",
   },
   {
     id: "tiktok",
@@ -82,6 +228,8 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     desc: "Posting + drafts",
     keyConnectable: false,
     oauthOnly: true,
+    syncSupported: false,
+    manageUrl: "https://www.tiktok.com",
   },
   {
     id: "youtube",
@@ -89,6 +237,8 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     desc: "Uploads + analytics",
     keyConnectable: false,
     oauthOnly: true,
+    syncSupported: false,
+    manageUrl: "https://studio.youtube.com",
   },
   {
     id: "instagram",
@@ -96,6 +246,8 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     desc: "Posts + stories",
     keyConnectable: false,
     oauthOnly: true,
+    syncSupported: false,
+    manageUrl: "https://business.instagram.com",
   },
 ];
 
@@ -116,6 +268,14 @@ export async function validateConnector(
 ): Promise<ValidateOk | ValidateFail> {
   if (kind === "github") return validateGithub(apiKey);
   if (kind === "linear") return validateLinear(apiKey);
+  if (kind === "vercel") return validateVercel(apiKey);
+  if (kind === "neon") return validateNeon(apiKey);
+  if (kind === "telnyx") return validateTelnyx(apiKey);
+  if (kind === "stripe") return validateStripe(apiKey);
+  if (kind === "groq") return validateGroq(apiKey);
+  if (kind === "openai") return validateOpenAI(apiKey);
+  if (kind === "anthropic") return validateAnthropic(apiKey);
+  if (kind === "discord") return validateDiscord(apiKey);
   return { ok: false, error: "This connector does not take a key." };
 }
 
@@ -168,6 +328,161 @@ async function validateLinear(key: string): Promise<ValidateOk | ValidateFail> {
     };
   } catch {
     return { ok: false, error: "Couldn't reach Linear — check your connection." };
+  }
+}
+
+async function validateVercel(token: string): Promise<ValidateOk | ValidateFail> {
+  try {
+    const res = await fetch(`${VERCEL_API}/v2/user`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, error: "Vercel rejected that token — check it and try again." };
+    if (!res.ok)
+      return { ok: false, error: `Vercel error ${res.status} — try again shortly.` };
+    const j = (await res.json()) as { user?: { id?: string; username?: string; email?: string; name?: string } };
+    const user = j.user;
+    if (!user?.id) return { ok: false, error: "Unexpected Vercel response." };
+    return {
+      ok: true,
+      meta: { login: user.username ?? null, email: user.email ?? null, name: user.name ?? null },
+    };
+  } catch {
+    return { ok: false, error: "Couldn't reach Vercel — check your connection." };
+  }
+}
+
+async function validateNeon(key: string): Promise<ValidateOk | ValidateFail> {
+  try {
+    const res = await fetch(`${NEON_API}/projects`, {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, error: "Neon rejected that key — check it and try again." };
+    if (!res.ok)
+      return { ok: false, error: `Neon error ${res.status} — try again shortly.` };
+    const j = (await res.json()) as { projects?: Array<{ id?: string; name?: string }> };
+    return {
+      ok: true,
+      meta: { projects: Array.isArray(j.projects) ? j.projects.length : 0, name: j.projects?.[0]?.name ?? null },
+    };
+  } catch {
+    return { ok: false, error: "Couldn't reach Neon — check your connection." };
+  }
+}
+
+async function validateTelnyx(key: string): Promise<ValidateOk | ValidateFail> {
+  try {
+    const res = await fetch(`${TELNYX_API}/credential_connections?page[size]=1`, {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, error: "Telnyx rejected that key — check it and try again." };
+    if (!res.ok)
+      return { ok: false, error: `Telnyx error ${res.status} — try again shortly.` };
+    const j = (await res.json()) as { data?: Array<{ id?: string; name?: string }> };
+    return {
+      ok: true,
+      meta: { connections: Array.isArray(j.data) ? j.data.length : 0, name: j.data?.[0]?.name ?? null },
+    };
+  } catch {
+    return { ok: false, error: "Couldn't reach Telnyx — check your connection." };
+  }
+}
+
+async function validateStripe(key: string): Promise<ValidateOk | ValidateFail> {
+  try {
+    const res = await fetch(`${STRIPE_API}/account`, {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, error: "Stripe rejected that key — check it and try again." };
+    if (!res.ok)
+      return { ok: false, error: `Stripe error ${res.status} — try again shortly.` };
+    const j = (await res.json()) as { id?: string; email?: string; business_profile?: { name?: string } };
+    if (!j.id) return { ok: false, error: "Unexpected Stripe response." };
+    return {
+      ok: true,
+      meta: { name: j.business_profile?.name ?? null, email: j.email ?? null, accountId: j.id },
+    };
+  } catch {
+    return { ok: false, error: "Couldn't reach Stripe — check your connection." };
+  }
+}
+
+async function validateGroq(key: string): Promise<ValidateOk | ValidateFail> {
+  try {
+    const res = await fetch(`${GROQ_API}/models`, {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, error: "Groq rejected that key — check it and try again." };
+    if (!res.ok)
+      return { ok: false, error: `Groq error ${res.status} — try again shortly.` };
+    const j = (await res.json()) as { data?: Array<{ id?: string }> };
+    return { ok: true, meta: { models: Array.isArray(j.data) ? j.data.length : 0 } };
+  } catch {
+    return { ok: false, error: "Couldn't reach Groq — check your connection." };
+  }
+}
+
+async function validateOpenAI(key: string): Promise<ValidateOk | ValidateFail> {
+  try {
+    const res = await fetch(`${OPENAI_API}/models`, {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, error: "OpenAI rejected that key — check it and try again." };
+    if (!res.ok)
+      return { ok: false, error: `OpenAI error ${res.status} — try again shortly.` };
+    const j = (await res.json()) as { data?: Array<{ id?: string }> };
+    return { ok: true, meta: { models: Array.isArray(j.data) ? j.data.length : 0 } };
+  } catch {
+    return { ok: false, error: "Couldn't reach OpenAI — check your connection." };
+  }
+}
+
+async function validateAnthropic(key: string): Promise<ValidateOk | ValidateFail> {
+  try {
+    const res = await fetch(`${ANTHROPIC_API}/models`, {
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+      },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, error: "Anthropic rejected that key — check it and try again." };
+    if (!res.ok)
+      return { ok: false, error: `Anthropic error ${res.status} — try again shortly.` };
+    const j = (await res.json()) as { data?: Array<{ id?: string }> };
+    return { ok: true, meta: { models: Array.isArray(j.data) ? j.data.length : 0 } };
+  } catch {
+    return { ok: false, error: "Couldn't reach Anthropic — check your connection." };
+  }
+}
+
+async function validateDiscord(token: string): Promise<ValidateOk | ValidateFail> {
+  try {
+    const res = await fetch(`${DISCORD_API}/users/@me`, {
+      headers: { authorization: token.startsWith("Bot ") ? token : `Bot ${token}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, error: "Discord rejected that bot token — check it and try again." };
+    if (!res.ok)
+      return { ok: false, error: `Discord error ${res.status} — try again shortly.` };
+    const j = (await res.json()) as { username?: string; global_name?: string; id?: string };
+    if (!j.id) return { ok: false, error: "Unexpected Discord response." };
+    return { ok: true, meta: { login: j.username ?? null, name: j.global_name ?? null, accountId: j.id } };
+  } catch {
+    return { ok: false, error: "Couldn't reach Discord — check your connection." };
   }
 }
 
@@ -320,6 +635,10 @@ export async function syncConnector(
   userId: string,
   kind: ConnectorKind,
 ): Promise<{ ok: boolean; items: number; created: number; error?: string }> {
+  const entry = CONNECTOR_CATALOG.find((c) => c.id === kind);
+  if (!entry?.syncSupported)
+    return { ok: true, items: 0, created: 0 };
+
   const conn = await prisma.connector.findUnique({
     where: { userId_kind: { userId, kind } },
   });
@@ -372,7 +691,12 @@ export async function syncConnector(
 }
 
 export async function syncAllConnectors(userId: string) {
-  const conns = await prisma.connector.findMany({ where: { userId } });
+  const syncKinds = new Set(
+    CONNECTOR_CATALOG.filter((c) => c.syncSupported).map((c) => c.id),
+  );
+  const conns = await prisma.connector.findMany({
+    where: { userId, kind: { in: [...syncKinds] } },
+  });
   const results: { kind: string; ok: boolean; created: number; error?: string }[] =
     [];
   for (const c of conns) {
@@ -398,6 +722,7 @@ export async function saveConnectorToken(
   meta: Record<string, unknown>,
 ): Promise<void> {
   const box = encryptSecret(apiKey);
+  const entry = CONNECTOR_CATALOG.find((c) => c.id === kind);
   await prisma.connector.upsert({
     where: { userId_kind: { userId, kind } },
     create: {
@@ -407,12 +732,14 @@ export async function saveConnectorToken(
       iv: box.iv,
       authTag: box.authTag,
       meta: JSON.stringify(meta),
+      lastSyncInfo: entry?.syncSupported ? null : "Verified",
     },
     update: {
       tokenCipher: box.apiKeyCipher,
       iv: box.iv,
       authTag: box.authTag,
       meta: JSON.stringify(meta),
+      lastSyncInfo: entry?.syncSupported ? null : "Verified",
     },
   });
 }
