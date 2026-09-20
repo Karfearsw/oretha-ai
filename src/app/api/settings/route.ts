@@ -10,7 +10,7 @@ export async function PATCH(req: Request) {
 
   try {
     const body = await req.json();
-    const data: Record<string, string | boolean> = {};
+    const data: Record<string, string | boolean | null> = {};
 
     if (typeof body.censorship === "string" && ["open", "guarded", "strict"].includes(body.censorship)) {
       data.censorship = body.censorship;
@@ -29,6 +29,9 @@ export async function PATCH(req: Request) {
     }
     if (typeof body.tagline === "string") {
       data.tagline = body.tagline.trim().slice(0, 120) || null;
+    }
+    if (typeof body.defaultMode === "string" && ["work", "code"].includes(body.defaultMode)) {
+      data.defaultMode = body.defaultMode;
     }
 
     if (Object.keys(data).length === 0) {

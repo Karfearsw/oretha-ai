@@ -13,7 +13,14 @@ export async function GET(
   const { id } = await params;
   const thread = await prisma.thread.findFirst({
     where: { id, userId: user.id },
-    select: { id: true, title: true },
+    select: {
+      id: true,
+      title: true,
+      mode: true,
+      cloudEnv: true,
+      repoName: true,
+      branchName: true,
+    },
   });
   if (!thread)
     return NextResponse.json({ error: "not_found" }, { status: 404 });

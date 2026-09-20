@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
+import {
+  defaultBranchForRepo,
+  normalizeCloudEnv,
+  normalizeMode,
+} from "@/lib/devMode";
 
 /* GET /api/threads — the user's threads, newest first. */
 export async function GET() {
@@ -15,6 +20,10 @@ export async function GET() {
       id: true,
       slug: true,
       title: true,
+      mode: true,
+      cloudEnv: true,
+      repoName: true,
+      branchName: true,
       updatedAt: true,
       messages: {
         orderBy: { createdAt: "desc" },
@@ -29,6 +38,10 @@ export async function GET() {
       id: t.id,
       slug: t.slug,
       title: t.title,
+      mode: t.mode,
+      cloudEnv: t.cloudEnv,
+      repoName: t.repoName,
+      branchName: t.branchName,
       updatedAt: t.updatedAt,
       preview: t.messages[0]?.content.slice(0, 120) ?? "",
     })),
@@ -36,9 +49,21 @@ export async function GET() {
 }
 
 /* POST /api/threads — create a new chat. */
-export async function POST() {
+export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const body = (await req.json().catch(() => null)) as {
+    mode?: string;
+    cloudEnv?: string;
+    repoName?: string;
+    branchName?: string;
+  } | null;
+  const mode = normalizeMode(body?.mode ?? user.defaultMode);
+  const repoName = body?.repoName?.trim() || null;
+  const branchName =
+    body?.branchName?.trim() || defaultBranchForRepo(repoName) || null;
+  const cloudEnv = normalizeCloudEnv(body?.cloudEnv);
 
   const count = await prisma.thread.count({ where: { userId: user.id } });
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -47,9 +72,21 @@ export async function POST() {
         data: {
           userId: user.id,
           slug: `t${count + 1 + attempt}`,
-          title: "New chat",
+          title: mode === "code" ? "New code chat" : "New chat",
+          mode,
+          cloudEnv,
+          repoName,
+          branchName,
         },
-        select: { id: true, slug: true, title: true },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          mode: true,
+          cloudEnv: true,
+          repoName: true,
+          branchName: true,
+        },
       });
       return NextResponse.json({ thread });
     } catch {

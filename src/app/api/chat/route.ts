@@ -11,6 +11,7 @@ import {
 } from "@/lib/llm";
 import { executeTool, parseToolArgs } from "@/lib/tools";
 import { scheduleMemoryUpdate } from "@/lib/memory";
+import { codeModeInstruction, needsPreview } from "@/lib/devMode";
 
 const MAX_TOOL_TURNS = 3;
 
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as {
     threadId?: string;
     message?: string;
+    approvedPreviewId?: string;
   } | null;
   const text = body?.message?.trim();
   if (!body?.threadId || !text)
@@ -37,10 +39,58 @@ export async function POST(req: Request) {
 
   const thread = await prisma.thread.findFirst({
     where: { id: body.threadId, userId: user.id },
-    select: { id: true },
+    select: {
+      id: true,
+      mode: true,
+      title: true,
+      repoName: true,
+      branchName: true,
+      cloudEnv: true,
+    },
   });
   if (!thread)
     return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  let approvedPreview:
+    | {
+        id: string;
+        title: string;
+        plan: string;
+        risks: string;
+        nextStep: string;
+      }
+    | null = null;
+
+  if (thread.mode === "code" && needsPreview(text)) {
+    if (!body.approvedPreviewId) {
+      return NextResponse.json(
+        { error: "preview_required", message: "Run preview before updates." },
+        { status: 428 },
+      );
+    }
+    approvedPreview = await prisma.devTask.findFirst({
+      where: {
+        id: body.approvedPreviewId,
+        userId: user.id,
+        threadId: thread.id,
+        kind: "preview",
+        status: "approved",
+      },
+      select: {
+        id: true,
+        title: true,
+        plan: true,
+        risks: true,
+        nextStep: true,
+      },
+    });
+    if (!approvedPreview) {
+      return NextResponse.json(
+        { error: "preview_required", message: "Approve a preview before updates." },
+        { status: 428 },
+      );
+    }
+  }
 
   await prisma.message.create({
     data: { threadId: thread.id, role: "user", content: text },
@@ -59,9 +109,25 @@ export async function POST(req: Request) {
     }));
 
   const system = await buildSystemMessages(user.id);
-  const llmMessages: LlmMessage[] = [...system, ...historyMessages];
+  const llmMessages: LlmMessage[] = [...system];
 
-  const tools = toolCallSupported()
+  if (thread.mode === "code") {
+    llmMessages.push({
+      role: "system",
+      content: codeModeInstruction({
+        repoName: thread.repoName,
+        branchName: thread.branchName,
+        cloudEnv: thread.cloudEnv,
+        approvedPreview,
+      }),
+    });
+  }
+
+  llmMessages.push(...historyMessages);
+
+  const tools = thread.mode === "code"
+    ? undefined
+    : toolCallSupported()
     ? (await import("@/lib/tools")).TOOLS
     : undefined;
 

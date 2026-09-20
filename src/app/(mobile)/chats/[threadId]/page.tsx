@@ -28,6 +28,13 @@ import {
   Trash2,
   Volume2,
   VolumeX,
+  BriefcaseBusiness,
+  Code2,
+  FolderGit2,
+  GitBranch,
+  ServerCog,
+  CheckCircle2,
+  TriangleAlert,
 } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -39,6 +46,16 @@ import { Chip } from "@/components/ui/Chip";
 import { generateAgentFiles } from "@/lib/agentFiles";
 import { useSessionUser } from "@/components/layout/AppShell";
 import type { ChatMessage } from "@/lib/types";
+import {
+  branchesForRepo,
+  CLOUD_ENV_OPTIONS,
+  needsPreview,
+  normalizeCloudEnv,
+  normalizeMode,
+  STUB_REPOS,
+  type CloudEnv,
+  type DevMode,
+} from "@/lib/devMode";
 
 type Seg = "activity" | "guardrails" | "memory" | "files";
 
@@ -73,6 +90,17 @@ interface UiMessage {
   toolLabel?: string;
 }
 
+interface PendingPreview {
+  id: string;
+  prompt: string;
+  title: string;
+  summary: string;
+  plan: string;
+  risks: string[];
+  nextStep: string;
+  status: string;
+}
+
 function nowLabel() {
   return new Date()
     .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -93,6 +121,10 @@ export default function ChatRoomPage() {
   const threadId = params.threadId;
   // Real thread from the DB; unknown slugs fall back to the newest real thread.
   const [threadTitle, setThreadTitle] = useState<string | null>(null);
+  const [threadMode, setThreadMode] = useState<DevMode>("work");
+  const [cloudEnv, setCloudEnv] = useState<CloudEnv>("local");
+  const [repoName, setRepoName] = useState<string | null>(null);
+  const [branchName, setBranchName] = useState<string | null>(null);
   const sessionUser = useSessionUser();
   const agentName = sessionUser?.agentName || "Oretha";
 
@@ -113,6 +145,11 @@ export default function ChatRoomPage() {
   const [listening, setListening] = useState(false);
   const [voiceNote, setVoiceNote] = useState<string | null>(null);
   const [mailBusy, setMailBusy] = useState(false);
+  const [envSheetOpen, setEnvSheetOpen] = useState(false);
+  const [repoSheetOpen, setRepoSheetOpen] = useState(false);
+  const [branchSheetOpen, setBranchSheetOpen] = useState(false);
+  const [pendingPreview, setPendingPreview] = useState<PendingPreview | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
@@ -136,12 +173,24 @@ export default function ChatRoomPage() {
       .then((d) => {
         if (!alive || !d?.threads) return;
         const found = d.threads.find(
-          (t: { id: string; slug: string; title: string }) =>
+          (t: {
+            id: string;
+            slug: string;
+            title: string;
+            mode?: string;
+            cloudEnv?: string;
+            repoName?: string | null;
+            branchName?: string | null;
+          }) =>
             t.id === threadId || t.slug === threadId,
         );
         if (found) {
           if (found.id !== threadId) router.replace(`/chats/${found.id}`);
           setThreadTitle(found.title);
+          setThreadMode(normalizeMode(found.mode));
+          setCloudEnv(normalizeCloudEnv(found.cloudEnv));
+          setRepoName(found.repoName ?? null);
+          setBranchName(found.branchName ?? null);
         } else if (d.threads.length > 0) {
           router.replace(`/chats/${d.threads[0].id}`);
         }
@@ -194,7 +243,7 @@ export default function ChatRoomPage() {
   useEffect(() => {
     setLoaded(false);
     setMessages([]);
-    let url = `/api/threads/${threadId}/messages`;
+    setPendingPreview(null);
     if (/^t\d+$/.test(threadId)) {
       fetch("/api/threads")
         .then((r) => (r.ok ? r.json() : null))
@@ -225,6 +274,11 @@ export default function ChatRoomPage() {
         const r = await fetch(`/api/threads/${id}/messages`);
         if (!r.ok) return setLoaded(true);
         const d = await r.json();
+        setThreadTitle(d.thread?.title ?? null);
+        setThreadMode(normalizeMode(d.thread?.mode));
+        setCloudEnv(normalizeCloudEnv(d.thread?.cloudEnv));
+        setRepoName(d.thread?.repoName ?? null);
+        setBranchName(d.thread?.branchName ?? null);
         setMessages(
           (d.messages ?? []).map(
             (m: { id: string; role: string; content: string; createdAt: string }) => ({
@@ -268,15 +322,40 @@ export default function ChatRoomPage() {
     setBusy(false);
   };
 
-  const send = () => {
-    const text = input.trim();
-    if (!text || busy) return;
+  async function updateThreadContext(patch: {
+    cloudEnv?: CloudEnv;
+    repoName?: string | null;
+    branchName?: string | null;
+  }) {
+    const nextRepo = patch.repoName !== undefined ? patch.repoName : repoName;
+    const nextBranch =
+      patch.branchName !== undefined
+        ? patch.branchName
+        : patch.repoName !== undefined
+          ? branchesForRepo(nextRepo)[0] ?? null
+          : branchName;
+    const nextEnv = patch.cloudEnv ?? cloudEnv;
 
+    setRepoName(nextRepo ?? null);
+    setBranchName(nextBranch ?? null);
+    setCloudEnv(nextEnv);
+
+    await fetch(`/api/threads/${threadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repoName: nextRepo,
+        branchName: nextBranch,
+        cloudEnv: nextEnv,
+      }),
+    }).catch(() => {});
+  }
+
+  async function deliverMessage(text: string, approvedPreviewId?: string) {
     setMessages((m) => [
       ...m,
       { id: `u${Date.now()}`, role: "user", text, time: nowLabel() },
     ]);
-    setInput("");
     setBusy(true);
     setStreaming("");
 
@@ -286,7 +365,7 @@ export default function ChatRoomPage() {
     fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ threadId, message: text }),
+      body: JSON.stringify({ threadId, message: text, approvedPreviewId }),
       signal: controller.signal,
     })
       .then(async (res) => {
@@ -298,6 +377,12 @@ export default function ChatRoomPage() {
         }
         if (res.status === 404) {
           setStreaming("This chat went missing on my end. Start a new one?");
+          return;
+        }
+        if (res.status === 428) {
+          setStreaming("");
+          setVoiceNote("Run the preview first, then approve it before sending this update.");
+          setTimeout(() => setVoiceNote(null), 5000);
           return;
         }
         if (!res.ok || !res.body) {
@@ -340,6 +425,78 @@ export default function ChatRoomPage() {
           return null;
         });
       });
+  }
+
+  async function runPreview(message: string) {
+    if (previewBusy) return;
+    setPreviewBusy(true);
+    try {
+      const res = await fetch("/api/dev/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId, message }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setVoiceNote(
+          data?.error === "preview_not_required"
+            ? "That request does not need a preview."
+            : "Preview could not be created. Check the repo and branch, then try again.",
+        );
+        setTimeout(() => setVoiceNote(null), 5000);
+        return;
+      }
+      setPendingPreview(data.preview);
+      setInput("");
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  async function approvePreview() {
+    if (!pendingPreview || busy) return;
+    const res = await fetch("/api/dev/preview", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pendingPreview.id, action: "approve" }),
+    });
+    if (!res.ok) {
+      setVoiceNote("That preview approval did not stick. Try again.");
+      setTimeout(() => setVoiceNote(null), 5000);
+      return;
+    }
+    const prompt = pendingPreview.prompt;
+    const approvedId = pendingPreview.id;
+    setPendingPreview(null);
+    await deliverMessage(prompt, approvedId);
+  }
+
+  async function rejectPreview() {
+    if (!pendingPreview) return;
+    await fetch("/api/dev/preview", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pendingPreview.id, action: "reject" }),
+    }).catch(() => {});
+    setPendingPreview(null);
+    setVoiceNote("Preview dismissed. Adjust the request and try again.");
+    setTimeout(() => setVoiceNote(null), 5000);
+  }
+
+  const send = () => {
+    const text = input.trim();
+    if (!text || busy || previewBusy) return;
+    if (threadMode === "code" && pendingPreview) {
+      setVoiceNote("Approve or dismiss the current preview before sending another update.");
+      setTimeout(() => setVoiceNote(null), 5000);
+      return;
+    }
+    if (threadMode === "code" && needsPreview(text)) {
+      void runPreview(text);
+      return;
+    }
+    setInput("");
+    void deliverMessage(text);
   };
 
   /* ── Voice input (Web Speech API) ─────────────────────────────
@@ -494,12 +651,23 @@ export default function ChatRoomPage() {
             <OrethaMark size={52} />
             <span className="rounded-full bg-elevated px-3.5 py-1.5 text-center">
               <span className="block font-display text-[13px] font-bold leading-tight text-cream">
-              {threadTitle ?? agentName}
+                {threadTitle ?? agentName}
+              </span>
+              <span className="mt-1 flex items-center justify-center gap-1.5 text-[11.5px] leading-tight text-sand">
+                <span>{busy ? "is working" : "is ready"}</span>
+                <Chip tone={threadMode === "code" ? "violet" : "gold"}>
+                  {threadMode === "code" ? (
+                    <>
+                      <Code2 size={11} /> Code
+                    </>
+                  ) : (
+                    <>
+                      <BriefcaseBusiness size={11} /> Work
+                    </>
+                  )}
+                </Chip>
+              </span>
             </span>
-            <span className="block text-[11.5px] leading-tight text-sand">
-              {busy ? "is working" : "is ready"}
-            </span>
-          </span>
           </div>
           <button
             aria-label="Chat options"
@@ -510,6 +678,45 @@ export default function ChatRoomPage() {
             <Ellipsis size={20} />
           </button>
         </div>
+        {threadMode === "code" && (
+          <div className="px-4 pb-2">
+            <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-gold/20 bg-elevated p-2">
+              <button
+                onClick={() => setEnvSheetOpen(true)}
+                className="rounded-[14px] border border-white/8 bg-canvas/70 px-3 py-2 text-left"
+              >
+                <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-clay">
+                  <ServerCog size={12} /> Cloud
+                </span>
+                <span className="mt-1 block truncate text-[12.5px] font-semibold text-cream">
+                  {cloudEnv}
+                </span>
+              </button>
+              <button
+                onClick={() => setRepoSheetOpen(true)}
+                className="rounded-[14px] border border-white/8 bg-canvas/70 px-3 py-2 text-left"
+              >
+                <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-clay">
+                  <FolderGit2 size={12} /> Repo
+                </span>
+                <span className="mt-1 block truncate text-[12.5px] font-semibold text-cream">
+                  {repoName ?? "Select repo"}
+                </span>
+              </button>
+              <button
+                onClick={() => setBranchSheetOpen(true)}
+                className="rounded-[14px] border border-white/8 bg-canvas/70 px-3 py-2 text-left"
+              >
+                <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-clay">
+                  <GitBranch size={12} /> Branch
+                </span>
+                <span className="mt-1 block truncate text-[12.5px] font-semibold text-cream">
+                  {branchName ?? "Select branch"}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
         <div className="px-4 pb-2">
           <SegmentedControl items={SEGMENTS} value={seg} onChange={setSeg} iconOnly />
         </div>
@@ -520,17 +727,18 @@ export default function ChatRoomPage() {
         {seg === "activity" && (
           <div className="flex flex-col gap-3 pt-2">
             <p className="text-center text-[11px] font-medium uppercase tracking-widest text-clay">
-              Today
+              {threadMode === "code" ? "Code mode" : "Today"}
             </p>
             {loaded && messages.length === 0 && streaming === null && (
               <div className="flex flex-col items-center gap-2 pt-10 text-center">
                 <Sparkles size={26} className="text-gold" />
                 <p className="font-display text-[15px] font-bold text-cream">
-                  {agentName} is listening
+                  {threadMode === "code" ? "Ready to build with you" : `${agentName} is listening`}
                 </p>
                 <p className="max-w-[260px] text-[12.5px] text-clay">
-                  She knows your files, your rules, and your memory. What do you
-                  need?
+                  {threadMode === "code"
+                    ? "Pick the repo context, ask for the change, then approve the preview before anything moves."
+                    : "She knows your files, your rules, and your memory. What do you need?"}
                 </p>
               </div>
             )}
@@ -538,6 +746,14 @@ export default function ChatRoomPage() {
               <p className="pt-10 text-center text-[13px] text-clay">
                 Loading the conversation…
               </p>
+            )}
+            {threadMode === "code" && pendingPreview && (
+              <PreviewCard
+                preview={pendingPreview}
+                busy={busy || previewBusy}
+                onApprove={approvePreview}
+                onReject={rejectPreview}
+              />
             )}
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
@@ -645,6 +861,11 @@ export default function ChatRoomPage() {
             {voiceNote}
           </p>
         )}
+        {threadMode === "code" && (
+          <p className="mb-2 rounded-[12px] border border-gold/20 bg-gold/10 px-3 py-2 text-center text-[11.5px] leading-snug text-gold">
+            Code mode waits for preview approval before write-style requests.
+          </p>
+        )}
         <div className="flex items-center gap-2 rounded-full border border-white/10 bg-elevated py-1.5 pl-3 pr-1.5">
           <button
             aria-label="Quick actions"
@@ -657,7 +878,13 @@ export default function ChatRoomPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder={listening ? "Listening…" : `Message ${agentName}…`}
+            placeholder={
+              listening
+                ? "Listening…"
+                : threadMode === "code"
+                  ? "Describe the code change or question…"
+                  : `Message ${agentName}…`
+            }
             className="min-w-0 flex-1 bg-transparent text-[15px] text-cream outline-none placeholder:text-clay"
           />
           {input.trim() === "" && (
@@ -739,7 +966,11 @@ export default function ChatRoomPage() {
           <button
             onClick={async () => {
               setPlusOpen(false);
-              const r = await fetch("/api/threads", { method: "POST" });
+              const r = await fetch("/api/threads", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode: threadMode }),
+              });
               const d = await r.json().catch(() => null);
               if (d?.thread?.id) router.push(`/chats/${d.thread.id}`);
             }}
@@ -849,6 +1080,113 @@ export default function ChatRoomPage() {
         </div>
       </Sheet>
 
+      <Sheet open={envSheetOpen} onClose={() => setEnvSheetOpen(false)} title="Cloud environment">
+        <div className="flex flex-col gap-2.5 pb-4">
+          {CLOUD_ENV_OPTIONS.map((env) => (
+            <button
+              key={env}
+              onClick={async () => {
+                setEnvSheetOpen(false);
+                await updateThreadContext({ cloudEnv: env });
+              }}
+              className={`flex items-center justify-between rounded-[16px] border p-4 text-left transition active:scale-[0.98] ${
+                cloudEnv === env
+                  ? "border-gold/40 bg-gold/10"
+                  : "border-white/8 bg-elevated"
+              }`}
+            >
+              <span>
+                <span className="block text-[14.5px] font-semibold text-cream">
+                  {env[0].toUpperCase() + env.slice(1)}
+                </span>
+                <span className="block text-[12px] text-sand">
+                  {env === "local"
+                    ? "Use local preview assumptions first."
+                    : env === "staging"
+                      ? "Assume staging env and preview-safe data."
+                      : "Treat production as read-mostly unless you say otherwise."}
+                </span>
+              </span>
+              {cloudEnv === env && <CheckCircle2 size={18} className="text-gold" />}
+            </button>
+          ))}
+        </div>
+      </Sheet>
+
+      <Sheet open={repoSheetOpen} onClose={() => setRepoSheetOpen(false)} title="Repository">
+        <div className="flex flex-col gap-2.5 pb-4">
+          {STUB_REPOS.map((repo) => (
+            <button
+              key={repo.name}
+              onClick={async () => {
+                setRepoSheetOpen(false);
+                setBranchSheetOpen(false);
+                await updateThreadContext({
+                  repoName: repo.name,
+                  branchName: repo.branches[0] ?? null,
+                });
+              }}
+              className={`flex items-center justify-between rounded-[16px] border p-4 text-left transition active:scale-[0.98] ${
+                repoName === repo.name
+                  ? "border-gold/40 bg-gold/10"
+                  : "border-white/8 bg-elevated"
+              }`}
+            >
+              <span>
+                <span className="block text-[14.5px] font-semibold text-cream">
+                  {repo.name}
+                </span>
+                <span className="block text-[12px] text-sand">
+                  {repo.branches.join(" · ")}
+                </span>
+              </span>
+              {repoName === repo.name && <CheckCircle2 size={18} className="text-gold" />}
+            </button>
+          ))}
+        </div>
+      </Sheet>
+
+      <Sheet open={branchSheetOpen} onClose={() => setBranchSheetOpen(false)} title="Branch">
+        <div className="flex flex-col gap-2.5 pb-4">
+          {!repoName && (
+            <div className="rounded-[16px] border border-white/8 bg-elevated p-4 text-[12.5px] text-sand">
+              Pick a repo first so branch context stays honest.
+            </div>
+          )}
+          {repoName &&
+            branchesForRepo(repoName).map((branch) => (
+              <button
+                key={branch}
+                onClick={async () => {
+                  setBranchSheetOpen(false);
+                  await updateThreadContext({ branchName: branch });
+                }}
+                className={`flex items-center justify-between rounded-[16px] border p-4 text-left transition active:scale-[0.98] ${
+                  branchName === branch
+                    ? "border-gold/40 bg-gold/10"
+                    : "border-white/8 bg-elevated"
+                }`}
+              >
+                <span>
+                  <span className="block text-[14.5px] font-semibold text-cream">
+                    {branch}
+                  </span>
+                  <span className="block text-[12px] text-sand">
+                    {branch === "main"
+                      ? "Protected branch — preview and approval matter most here."
+                      : "Work here first, then review before merge."}
+                  </span>
+                </span>
+                {branchName === branch ? (
+                  <CheckCircle2 size={18} className="text-gold" />
+                ) : branch === "main" ? (
+                  <TriangleAlert size={18} className="text-alert" />
+                ) : null}
+              </button>
+            ))}
+        </div>
+      </Sheet>
+
       <FileSheet
         open={fileOpen !== null}
         filename={fileOpen ?? ""}
@@ -896,6 +1234,80 @@ function TypingDots() {
         <span className="h-1.5 w-1.5 rounded-full bg-sand" />
         <span className="h-1.5 w-1.5 rounded-full bg-sand" />
         <span className="h-1.5 w-1.5 rounded-full bg-sand" />
+      </div>
+    </div>
+  );
+}
+
+function PreviewCard({
+  preview,
+  busy,
+  onApprove,
+  onReject,
+}: {
+  preview: PendingPreview;
+  busy: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <div className="rounded-[20px] border border-gold/25 bg-gradient-to-br from-gold/10 to-violet/10 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-display text-[16px] font-bold text-cream">
+            Run Preview Before Updates
+          </p>
+          <p className="mt-1 text-[12.5px] text-sand">{preview.summary}</p>
+        </div>
+        <Chip tone="gold">Pending</Chip>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <section className="rounded-[16px] border border-white/8 bg-canvas/60 p-3.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-clay">
+            Plan
+          </p>
+          <p className="mt-1 text-[13px] leading-snug text-cream">{preview.plan}</p>
+        </section>
+
+        <section className="rounded-[16px] border border-white/8 bg-canvas/60 p-3.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-clay">
+            Risks
+          </p>
+          <div className="mt-1 flex flex-col gap-1.5">
+            {preview.risks.map((risk) => (
+              <p key={risk} className="text-[13px] leading-snug text-cream">
+                {risk}
+              </p>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[16px] border border-white/8 bg-canvas/60 p-3.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-clay">
+            Next Step
+          </p>
+          <p className="mt-1 text-[13px] leading-snug text-cream">
+            {preview.nextStep}
+          </p>
+        </section>
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={onApprove}
+          disabled={busy}
+          className="flex-1 rounded-[14px] bg-gradient-to-br from-gold to-violet py-3 text-[13.5px] font-bold text-canvas disabled:opacity-60"
+        >
+          Approve preview
+        </button>
+        <button
+          onClick={onReject}
+          disabled={busy}
+          className="flex-1 rounded-[14px] border border-white/10 py-3 text-[13.5px] font-semibold text-sand disabled:opacity-60"
+        >
+          Dismiss
+        </button>
       </div>
     </div>
   );

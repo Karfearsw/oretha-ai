@@ -15,6 +15,7 @@ export type SessionUser = {
   tagline: string | null;
   plan: string;
   avatarSeed: string;
+  defaultMode: string;
   setupCompleted: boolean;
   agentName: string;
   agentEmoji: string;
@@ -67,6 +68,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
         tagline: true,
         plan: true,
         avatarSeed: true,
+        defaultMode: true,
         setupCompleted: true,
         agentName: true,
         agentEmoji: true,
