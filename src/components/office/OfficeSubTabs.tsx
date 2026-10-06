@@ -10,6 +10,7 @@ const SUB_TABS: { href: string; label: string; icon: OrethaIconName; exact?: boo
   { href: "/workflows", label: "Workflows", icon: "workflows" },
   { href: "/office/directory", label: "Directory", icon: "directory" },
   { href: "/office/board", label: "Board", icon: "board" },
+  { href: "/office/activity", label: "Activity", icon: "activity" },
   { href: "/office/pulse", label: "Pulse", icon: "pulse" },
 ];
 

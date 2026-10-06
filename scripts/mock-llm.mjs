@@ -24,6 +24,9 @@ function sseChunks(res, text) {
     "cache-control": "no-store",
   });
   const words = text.split(" ");
+  // MOCK_LLM_DELAY_MS stretches streaming so UI behaviors (queue chips,
+  // stop button, live plan polling) are observable in manual testing.
+  const delay = Number(process.env.MOCK_LLM_DELAY_MS ?? 40);
   let i = 0;
   const timer = setInterval(() => {
     if (i >= words.length) {
@@ -40,17 +43,17 @@ function sseChunks(res, text) {
     };
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
     i++;
-  }, 40);
+  }, delay);
 }
 
-function sseToolCall(res, toolName) {
+function sseToolCall(res, toolName, args = {}) {
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-store",
   });
   const frames = [
     { delta: { tool_calls: [{ index: 0, id: "call_mock_1", function: { name: toolName, arguments: "" } }] } },
-    { delta: { tool_calls: [{ index: 0, function: { arguments: "{}" } }] } },
+    { delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify(args) } }] } },
   ];
   let i = 0;
   const timer = setInterval(() => {
@@ -94,6 +97,25 @@ const server = http.createServer((req, res) => {
       (m) => m.role === "tool",
     );
 
+    // Tool call? Only when tools are offered and the user shares a URL to read.
+    if (wantsTools && !sawToolResult && /\bread\b|\bopen\b|summar/i.test(lastContent) && /https?:\/\//.test(lastContent)) {
+      const url = lastContent.match(/https?:\/\/[^\s"')]+/)?.[0] ?? "";
+      sseToolCall(res, "read_page", { url });
+      return;
+    }
+    if (wantsTools && !sawToolResult && /\bwatch\b/i.test(lastContent) && /https?:\/\//.test(lastContent)) {
+      const url = lastContent.match(/https?:\/\/[^\s"')]+/)?.[0] ?? "";
+      sseToolCall(res, "create_watch", { name: "Mock watch", url, kind: "change", schedule: "daily" });
+      return;
+    }
+    if (wantsTools && !sawToolResult && /\bdelegate\b/i.test(lastContent)) {
+      sseToolCall(res, "delegate_task", { title: "Mock delegation", goal: lastContent.slice(0, 200) });
+      return;
+    }
+    if (wantsTools && !sawToolResult && /\bsearch\b|look up/i.test(lastContent)) {
+      sseToolCall(res, "web_search", { query: lastContent.replace(/.*\b(?:search|look up)\b/i, "").trim() || lastContent.slice(0, 80) });
+      return;
+    }
     // Tool call? Only when tools are offered and the user mentions mail or connectors.
     if (wantsTools && !sawToolResult && /\bgithub\b|\blinear\b|connector/i.test(lastContent)) {
       sseToolCall(res, "sync_connectors");
@@ -105,13 +127,36 @@ const server = http.createServer((req, res) => {
     }
 
     if (parsed.stream) {
+      // Which tool just came back? Key off the last assistant tool_calls
+      // message — string-matching the whole history misfires across turns.
+      const lastToolCall = [...(parsed.messages ?? [])]
+        .reverse()
+        .find((m) => m.role === "assistant" && Array.isArray(m.tool_calls));
+      // Oretha's LlmToolCall is flat ({id, name, arguments}); OpenAI's is
+      // nested ({function: {name}}). Accept both.
+      const tc0 = lastToolCall?.tool_calls?.[0];
+      const toolName = tc0?.function?.name ?? tc0?.name ?? "";
+      if (process.env.MOCK_LLM_DEBUG)
+        console.log("[mock] stream turn; sawToolResult=", sawToolResult, "toolName=", toolName, "roles=", JSON.stringify((parsed.messages ?? []).map((m) => m.role)));
+      if (process.env.MOCK_LLM_DEBUG && toolName) {
+        const toolMsg = [...(parsed.messages ?? [])].reverse().find((m) => m.role === "tool");
+        console.log(`[mock] ${toolName} result:`, String(toolMsg?.content ?? "").slice(0, 220));
+      }
       sseChunks(
         res,
         sawToolResult
-          ? /github|linear|connector/i.test(lastUser?.content ?? "") ||
-            JSON.stringify(parsed.messages).includes("sync_connectors")
-            ? "Pulled your GitHub and Linear work — any new assigned items are on the board now."
-            : "Checked the mailroom — the mock sync ran and any new email is triaged on the board."
+          ? toolName === "read_page"
+            ? "Here's what the page says — the read_page tool returned its title and text, summarized in the mock's own words."
+            : toolName === "web_search"
+              ? "Here are the top results the web_search tool found for that query."
+            : toolName === "create_watch"
+              ? "Watch created — I'll check that page on schedule and drop an alert on the board when it changes."
+              : toolName === "delegate_task"
+                ? "Done — the plan is drafted and waiting for your approval in Activity."
+                : /github|linear|connector/i.test(lastUser?.content ?? "") ||
+                    JSON.stringify(parsed.messages).includes("sync_connectors")
+                  ? "Pulled your GitHub and Linear work — any new assigned items are on the board now."
+                  : "Checked the mailroom — the mock sync ran and any new email is triaged on the board."
           : "Understood — the mock is answering so you can test the full loop. Wire a real key whenever you're ready and I'll sound like myself.",
       );
       return;

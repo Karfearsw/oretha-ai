@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Sheet } from "@/components/ui/Sheet";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
+import { WatchPanel } from "@/components/workflows/WatchPanel";
 
 interface WorkflowRow {
   id: string;
@@ -56,6 +57,7 @@ function timeAgo(iso: string): string {
 }
 
 export default function WorkflowsPage() {
+  const [tab, setTab] = useState<"workflows" | "watches">("workflows");
   const [workflows, setWorkflows] = useState<WorkflowRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,20 +158,45 @@ export default function WorkflowsPage() {
     <main className="pad-safe-top flex flex-col gap-4 px-4 pt-2">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-[26px] font-bold text-cream">Workflows</h1>
+          <h1 className="font-display text-[26px] font-bold text-cream">
+            {tab === "workflows" ? "Workflows" : "Watches"}
+          </h1>
           <p className="mt-0.5 text-[13px] text-sand">
-            Automations that run while you sleep. For real.
+            {tab === "workflows"
+              ? "Automations that run while you sleep. For real."
+              : "Goals that track pages and ping you on the board."}
           </p>
         </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          aria-label="New workflow"
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-gold to-violet text-canvas"
-        >
-          <Plus size={20} />
-        </button>
+        {tab === "workflows" && (
+          <button
+            onClick={() => setCreateOpen(true)}
+            aria-label="New workflow"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-gold to-violet text-canvas"
+          >
+            <Plus size={20} />
+          </button>
+        )}
       </header>
 
+      {/* Workflows | Watches segmented switch */}
+      <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-white/8 bg-elevated p-1">
+        {(["workflows", "watches"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`rounded-[11px] py-2.5 text-[13.5px] font-semibold capitalize transition ${
+              tab === t ? "bg-gold text-canvas" : "text-sand"
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {tab === "watches" ? (
+        <WatchPanel />
+      ) : (
+      <>
       {notice && (
         <p className="rounded-[12px] border border-complete/30 bg-complete/10 px-3.5 py-2.5 text-[12.5px] leading-snug text-complete">
           {notice}
@@ -428,6 +455,8 @@ export default function WorkflowsPage() {
           </Button>
         </div>
       </Sheet>
+      </>
+      )}
     </main>
   );
 }

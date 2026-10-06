@@ -9,6 +9,7 @@ import {
   Bot,
   Sparkles,
   ListChecks,
+  Eye,
 } from "lucide-react";
 import { OfficeSubTabs } from "@/components/office/OfficeSubTabs";
 import { AgentAvatar } from "@/components/ui/Avatar";
@@ -25,6 +26,7 @@ const SOURCE_ICON: Record<TaskSource, typeof Mail> = {
   GitHub: Github,
   Linear: CircleDot,
   Manual: PenLine,
+  Watch: Eye,
 };
 
 const PRIORITY_TONE = {

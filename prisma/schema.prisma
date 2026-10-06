@@ -42,6 +42,8 @@ model User {
   tasks      Task[]
   workflows  Workflow[]
   connectors Connector[]
+  watches    Watch[]
+  agentTasks AgentTask[]
 }
 
 model AgentFile {
@@ -198,4 +200,59 @@ model Connector {
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, kind])
+}
+
+/* ── Page watches: recurring checks of a public URL ────────────────────
+ * kind: change → alert when normalized text hash differs from lastHash
+ *       text   → alert when `needle` appears on the page
+ *       price  → alert when a USD amount ≤ threshold (or dropped vs lastValue)
+ * Alerts are Task rows keyed `watch:<id>:<alertKey>` (dedup via Task.remoteKey).
+ * failCount drives exponential backoff on fetch/check errors. */
+
+model Watch {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  url         String
+  kind        String    @default("change")
+  needle      String?
+  threshold   Float?
+  schedule    String    @default("daily")
+  enabled     Boolean   @default(true)
+  lastHash    String?
+  lastValue   String?
+  lastCheckAt DateTime?
+  lastStatus  String    @default("idle")
+  lastError   String?
+  failCount   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, enabled])
+}
+
+/* ── Delegated tasks: durable plans the user approves and controls ────
+ * steps is a JSON array of {label, detail, status, receipt}.
+ * leaseUntil is the SQL lease: the runner renews it per step and the
+ * sweeper reclaims runs whose lease expired (process died mid-run). */
+
+model AgentTask {
+  id          String    @id @default(cuid())
+  userId      String
+  threadId    String?
+  title       String
+  goal        String
+  status      String    @default("awaiting_approval")
+  steps       String    @default("[]")
+  currentStep Int       @default(0)
+  summary     String    @default("")
+  leaseUntil  DateTime?
+  attempts    Int       @default(0)
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
 }

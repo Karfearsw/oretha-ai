@@ -27,7 +27,25 @@ export function startSweeper() {
           result.results.map((r) => `${r.workflow}=${r.status}`).join(", "),
         );
     } catch (err) {
-      console.error("[sweeper] sweep failed:", err);
+      console.error("[sweeper] workflow sweep failed:", err);
+    }
+    try {
+      const { sweepDueWatches } = await import("@/lib/watches");
+      const w = await sweepDueWatches();
+      if (w.executed > 0)
+        console.log(
+          `[sweeper] watch checks: ${w.executed}/${w.checked}, alerts=${w.alerts}, errors=${w.errors}`,
+        );
+    } catch (err) {
+      console.error("[sweeper] watch sweep failed:", err);
+    }
+    try {
+      const { recoverStaleTasks } = await import("@/lib/agentTasks");
+      const t = await recoverStaleTasks();
+      if (t.resumed > 0 || t.failed > 0)
+        console.log(`[sweeper] agent tasks: resumed=${t.resumed} failed=${t.failed}`);
+    } catch (err) {
+      console.error("[sweeper] task recovery failed:", err);
     }
   };
 

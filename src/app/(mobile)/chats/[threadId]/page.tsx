@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -35,6 +35,7 @@ import type { SegmentItem } from "@/components/ui/SegmentedControl";
 import { FileSheet } from "@/components/ui/FileSheet";
 import { AgentRunRow } from "@/components/hub/AgentRunRow";
 import { OrethaMark } from "@/components/ui/OrethaMark";
+import { AgentTaskCard } from "@/components/chats/AgentTaskCard";
 import { Chip } from "@/components/ui/Chip";
 import { generateAgentFiles } from "@/lib/agentFiles";
 import { useSessionUser } from "@/components/layout/AppShell";
@@ -113,6 +114,13 @@ export default function ChatRoomPage() {
   const [listening, setListening] = useState(false);
   const [voiceNote, setVoiceNote] = useState<string | null>(null);
   const [mailBusy, setMailBusy] = useState(false);
+  /* Follow-up queue: messages typed while the agent is replying. They show
+   * as chips above the composer and fire automatically when the stream ends. */
+  const [queue, setQueue] = useState<string[]>([]);
+  const queueRef = useRef<string[]>([]);
+  queueRef.current = queue;
+  /* Delegated tasks created in this thread (plan cards in the feed). */
+  const [taskCards, setTaskCards] = useState<{ id: string; title: string }[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
@@ -127,6 +135,39 @@ export default function ChatRoomPage() {
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, []);
+
+  // Draft retention: keep unsent text across re-renders and navigation.
+  const draftKey = `oretha-draft:${threadId}`;
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(draftKey);
+      if (saved) setInput(saved);
+    } catch { /* storage unavailable */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+  useEffect(() => {
+    try {
+      if (input) sessionStorage.setItem(draftKey, input);
+      else sessionStorage.removeItem(draftKey);
+    } catch { /* storage unavailable */ }
+  }, [input, draftKey]);
+
+  // Delegated tasks for this thread (plan cards with live controls).
+  const loadTaskCards = useCallback(() => {
+    fetch("/api/agent-tasks")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const mine = (d?.tasks ?? []).filter(
+          (t: { id: string; threadId: string | null; title: string }) =>
+            t.threadId === threadId,
+        );
+        setTaskCards(mine.map((t: { id: string; title: string }) => ({ id: t.id, title: t.title })));
+      })
+      .catch(() => {});
+  }, [threadId]);
+  useEffect(() => {
+    loadTaskCards();
+  }, [loadTaskCards]);
 
   // Load the real thread (title) — and if the slug is unknown, bounce to the newest one.
   useEffect(() => {
@@ -266,17 +307,16 @@ export default function ChatRoomPage() {
     }
     setStreaming(null);
     setBusy(false);
+    // Draft + follow-up queue both survive a stop.
   };
 
-  const send = () => {
-    const text = input.trim();
-    if (!text || busy) return;
-
+  /* Fire one message at the model. The follow-up queue chains through the
+   * `finally` below: when a stream ends, the next queued message goes out. */
+  const fire = (text: string) => {
     setMessages((m) => [
       ...m,
       { id: `u${Date.now()}`, role: "user", text, time: nowLabel() },
     ]);
-    setInput("");
     setBusy(true);
     setStreaming("");
 
@@ -339,7 +379,33 @@ export default function ChatRoomPage() {
           }
           return null;
         });
+        // Follow-up queue: fire the next message the agent finished.
+        const next = queueRef.current[0];
+        if (next !== undefined) {
+          setQueue((q) => q.slice(1));
+          // Let React flush the assistant bubble before the next turn starts.
+          setTimeout(() => fire(next), 50);
+        } else {
+          loadTaskCards(); // refresh plan cards in case one was created
+        }
       });
+  };
+
+  /* One entry point: while the agent is replying, sends queue up (visible
+   * chips above the composer); otherwise they fire immediately. */
+  const send = () => {
+    const text = input.trim();
+    if (!text) return;
+    setInput(""); // clears the draft too — it's on its way now
+    if (busy) {
+      setQueue((q) => [...q, text]);
+      return;
+    }
+    fire(text);
+  };
+
+  const unqueue = (index: number) => {
+    setQueue((q) => q.filter((_, i) => i !== index));
   };
 
   /* ── Voice input (Web Speech API) ─────────────────────────────
@@ -553,6 +619,9 @@ export default function ChatRoomPage() {
               />
             )}
             {busy && streaming === "" && <TypingDots />}
+            {taskCards.map((t) => (
+              <AgentTaskCard key={t.id} taskId={t.id} />
+            ))}
             {seg === "activity" && null}
           </div>
         )}
@@ -645,6 +714,30 @@ export default function ChatRoomPage() {
             {voiceNote}
           </p>
         )}
+        {queue.length > 0 && (
+          <div className="mb-2 flex flex-col gap-1.5">
+            <p className="px-1 text-[11px] font-medium uppercase tracking-widest text-clay">
+              {queue.length} queued {queue.length === 1 ? "follow-up" : "follow-ups"}
+            </p>
+            {queue.map((q, i) => (
+              <div
+                key={`${i}-${q.slice(0, 24)}`}
+                className="flex items-center gap-2 rounded-[12px] border border-white/8 bg-elevated px-3 py-2"
+              >
+                <span className="min-w-0 flex-1 truncate text-[12.5px] text-sand">
+                  {q}
+                </span>
+                <button
+                  onClick={() => unqueue(i)}
+                  aria-label="Remove from queue"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-clay transition active:scale-90 hover:text-alert"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-2 rounded-full border border-white/10 bg-elevated py-1.5 pl-3 pr-1.5">
           <button
             aria-label="Quick actions"
@@ -657,7 +750,13 @@ export default function ChatRoomPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder={listening ? "Listening…" : `Message ${agentName}…`}
+            placeholder={
+              listening
+                ? "Listening…"
+                : busy
+                  ? `${agentName} is replying — Enter queues a follow-up…`
+                  : `Message ${agentName}…`
+            }
             className="min-w-0 flex-1 bg-transparent text-[15px] text-cream outline-none placeholder:text-clay"
           />
           {input.trim() === "" && (

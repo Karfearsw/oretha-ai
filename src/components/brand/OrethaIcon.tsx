@@ -15,6 +15,7 @@ export type OrethaIconName =
   | "board"
   | "connectors"
   | "directory"
+  | "activity"
   | "inbox"
   | "images"
   | "video"
@@ -66,6 +67,8 @@ function Glyph({ name }: { name: OrethaIconName }) {
       return <><circle cx="8.6" cy="12" r="5.2" /><circle cx="15.4" cy="12" r="5.2" /></>;
     case "directory":
       return <><circle cx="12" cy="7" r="3" /><circle cx="5.4" cy="9" r="2.2" /><circle cx="18.6" cy="9" r="2.2" /><path d="M6.8 19.5c.6-4.1 2.6-5.7 5.2-5.7s4.6 1.6 5.2 5.7M2.8 17c.5-2.8 1.7-4 3.4-4.2M21.2 17c-.5-2.8-1.7-4-3.4-4.2" /></>;
+    case "activity":
+      return <><circle cx="5.6" cy="6" r="2" /><circle cx="5.6" cy="12" r="2" /><circle cx="5.6" cy="18" r="2" /><path d="M10.4 6h8M10.4 12h8M10.4 18h5.2M3.6 6h4M3.6 12h4M3.6 18h4" /></>;
     case "images":
       return <><rect x="3.6" y="4.4" width="16.8" height="15.2" rx="2.6" /><circle cx="9" cy="9.4" r="1.7" /><path d="m5 18.5 5.4-5.5 3.6 3.5 2.5-2.5 2.5 2.5" /></>;
     case "video":

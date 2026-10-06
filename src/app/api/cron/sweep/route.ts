@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { sweepDueWorkflows } from "@/lib/scheduler";
+import { sweepDueWatches } from "@/lib/watches";
+import { recoverStaleTasks } from "@/lib/agentTasks";
 
 /* GET /api/cron/sweep — execute all due workflows.
  * Production: called by the vercel.json cron with `Authorization: Bearer $CRON_SECRET`.
@@ -13,5 +15,7 @@ export async function GET(req: Request) {
   }
 
   const result = await sweepDueWorkflows();
-  return NextResponse.json({ ok: true, ...result });
+  const watches = await sweepDueWatches();
+  const tasks = await recoverStaleTasks();
+  return NextResponse.json({ ok: true, ...result, watches, tasks });
 }

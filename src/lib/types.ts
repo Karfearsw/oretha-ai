@@ -68,7 +68,7 @@ export interface AgentRun {
   steps: RunStep[];
 }
 
-export type TaskSource = "Email" | "GitHub" | "Linear" | "Manual";
+export type TaskSource = "Email" | "GitHub" | "Linear" | "Manual" | "Watch";
 export type TaskLane = "Inbox" | "In Progress" | "Waiting" | "Done";
 export type Priority = "low" | "med" | "high";
 

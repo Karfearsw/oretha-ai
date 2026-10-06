@@ -69,6 +69,7 @@ export async function POST(req: Request) {
     agentName: user.agentName || "Oretha",
     ownerName: user.name,
     ownerWork: user.tagline ?? null,
+    threadId: thread.id,
   };
 
   const encoder = new TextEncoder();
