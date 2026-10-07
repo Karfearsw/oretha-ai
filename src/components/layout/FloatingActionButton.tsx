@@ -19,7 +19,7 @@ const ACTIONS = [
     icon: MessageSquarePlus,
     tint: "text-gold",
   },
-  { label: "Launch an agent", href: "/chats/agents", icon: Bot, tint: "text-violet" },
+  { label: "Launch an agent", href: "/chats", icon: Bot, tint: "text-violet" },
   { label: "New workflow", href: "/office", icon: Workflow, tint: "text-complete" },
   {
     label: "Open KEVO board",

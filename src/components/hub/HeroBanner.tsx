@@ -31,7 +31,7 @@ export function HeroBanner() {
           </Button>
         </Link>
         <Link
-          href="/chats/agents"
+          href="/chats"
           className="text-[14px] font-semibold text-sand underline-offset-4 hover:text-cream hover:underline"
         >
           Browse agents
