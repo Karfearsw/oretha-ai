@@ -17,7 +17,7 @@
 
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { fetchPage, normalizeForHash } from "@/lib/pageFetch";
+import { fetchPage, validateUrl } from "@/lib/pageFetch";
 
 const BASE_INTERVAL: Record<string, number> = {
   hourly: 3_600_000,
@@ -45,6 +45,13 @@ export interface WatchCheckResult {
 
 function hash(s: string): string {
   return createHash("sha256").update(s).digest("hex").slice(0, 32);
+}
+
+/** Normalize text for change-hashing: collapse whitespace, drop nothing
+ * else. Part of the watch comparison policy — it lives here next to the
+ * hash it feeds. */
+export function normalizeForHash(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 /** First USD amount on the page, or null. Handles $1,299.00 / $42 / USD 42. */
@@ -262,7 +269,6 @@ export async function createWatch(
   if (!name) return { error: "Give the watch a name." };
   if (!url) return { error: "Missing URL." };
 
-  const { validateUrl } = await import("@/lib/pageFetch");
   const blocked = validateUrl(url);
   if (blocked) return { error: blocked };
 

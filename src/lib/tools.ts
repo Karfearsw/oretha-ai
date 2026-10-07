@@ -3,18 +3,21 @@
  * the chat route executes each call here and feeds results back as `tool`
  * messages, looping until the model answers in plain text.
  *
- * Tools:
- *  - check_mail:       syncs the user's AgentMail inbox, triages new email
- *                      (LLM verdict per email), returns a summary.
- *  - list_tasks:       returns the user's current Task board rows.
- *  - sync_connectors:  pulls assigned GitHub issues/PRs and Linear issues
- *                      onto the board.
- *  - read_page:        fetches a public URL and returns readable text.
- *  - web_search:       best-effort keyless web search (DuckDuckGo HTML).
- *  - create_watch:     creates a page watch (change / text / price).
- *  - delegate_task:    creates a delegated agent task with a plan.
+ * Structure: ONE table of tool definitions. Each entry co-locates its
+ * spec (name, description, JSON schema — what the model sees) with its
+ * `run` handler (what the server does and the JSON it returns), so spec
+ * and executor cannot drift apart. `TOOLS` is derived from the table;
+ * `executeTool` looks a handler up by name and wraps it in the
+ * never-throws contract. This module is the sole owner of the
+ * model-facing result shapes (status names such as ok/blocked/
+ * http_error/too_large live here and in pageFetch's PageFault).
  *
- * Every branch returns a JSON string — the model never sees a thrown error.
+ * Tools: check_mail, list_tasks, sync_connectors, read_page, web_search,
+ * create_watch, delegate_task.
+ *
+ * Every handler returns a JSON string — the model never sees a thrown
+ * error; executeTool's catch turns anything unexpected into
+ * `{status:"error"}`.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -43,136 +46,31 @@ export interface ToolSpec {
   };
 }
 
-export const TOOLS: ToolSpec[] = [
-  {
-    type: "function",
-    function: {
-      name: "check_mail",
-      description:
-        "Sync the user's AgentMail inbox, triage new emails (task / reply / archive), and return a summary of what landed. Use when the user asks about mail, the inbox, or new email.",
-      parameters: { type: "object", properties: {}, required: [] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "list_tasks",
-      description:
-        "List the user's current task board rows (title, lane, priority, due, assignee). Use when the user asks what's on the board.",
-      parameters: { type: "object", properties: {}, required: [] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "sync_connectors",
-      description:
-        "Pull the user's assigned work from connected services (GitHub issues and review-requested PRs, Linear issues) onto the task board. Use when the user asks to check GitHub/Linear, sync connectors, or update the board from external tools.",
-      parameters: { type: "object", properties: {}, required: [] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "read_page",
-      description:
-        "Fetch a public web page by URL and return its readable text (title + body, stripped of HTML). Use when the user shares a link or asks what a page says. Private/local addresses are blocked.",
-      parameters: {
-        type: "object",
-        properties: {
-          url: {
-            type: "string",
-            description: "Full http(s) URL of the page to read.",
-          },
-        },
-        required: ["url"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "web_search",
-      description:
-        "Best-effort web search: returns top results (title, URL, snippet) for a query. Use when the user asks to look something up online. May be unavailable — say so plainly if it is.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "The search query." },
-        },
-        required: ["query"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "create_watch",
-      description:
-        "Create a recurring watch on a public page. kind='change' alerts when the page content changes, kind='text' alerts when specific text appears, kind='price' alerts when a USD price on the page drops to or below threshold. Alerts land on the task board.",
-      parameters: {
-        type: "object",
-        properties: {
-          name: { type: "string", description: "Short name for the watch." },
-          url: { type: "string", description: "Full http(s) URL to watch." },
-          kind: {
-            type: "string",
-            enum: ["change", "text", "price"],
-            description: "What to watch for.",
-          },
-          needle: {
-            type: "string",
-            description: "Text to look for (kind='text').",
-          },
-          threshold: {
-            type: "number",
-            description: "Alert when price ≤ this (kind='price'), in USD.",
-          },
-          schedule: {
-            type: "string",
-            enum: ["hourly", "daily"],
-            description: "Check frequency. Defaults to daily.",
-          },
-        },
-        required: ["name", "url", "kind"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "delegate_task",
-      description:
-        "Create a delegated background task with a step-by-step plan. The plan waits for the user's approval before it runs — present the steps and tell them where to approve (chat card or Office → Activity).",
-      parameters: {
-        type: "object",
-        properties: {
-          title: { type: "string", description: "Short task title." },
-          goal: {
-            type: "string",
-            description: "What the task should accomplish, in detail.",
-          },
-        },
-        required: ["title", "goal"],
-      },
-    },
-  },
-];
+/** Per-call context the chat route passes through (who/which thread). */
+export interface ToolCtx {
+  agentName: string;
+  ownerName: string;
+  ownerWork: string | null;
+  threadId?: string | null;
+}
 
-/** Execute a tool call by name. Always returns a JSON string for the model. */
-export async function executeTool(
-  userId: string,
-  name: string,
-  args: Record<string, unknown>,
-  ctx: {
-    agentName: string;
-    ownerName: string;
-    ownerWork: string | null;
-    threadId?: string | null;
-  },
-): Promise<string> {
-  try {
-    if (name === "check_mail") {
+interface ToolDef {
+  spec: ToolSpec;
+  run: (userId: string, args: Record<string, unknown>, ctx: ToolCtx) => Promise<string>;
+}
+
+const TOOL_DEFS: ToolDef[] = [
+  {
+    spec: {
+      type: "function",
+      function: {
+        name: "check_mail",
+        description:
+          "Sync the user's AgentMail inbox, triage new emails (task / reply / archive), and return a summary of what landed. Use when the user asks about mail, the inbox, or new email.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    run: async (userId, _args, ctx) => {
       const results = await syncAllMailboxes(userId, ctx);
       if (results.length === 0) {
         return JSON.stringify({
@@ -191,9 +89,19 @@ export async function executeTool(
           ...(r.error ? { error: r.error } : {}),
         })),
       });
-    }
-
-    if (name === "list_tasks") {
+    },
+  },
+  {
+    spec: {
+      type: "function",
+      function: {
+        name: "list_tasks",
+        description:
+          "List the user's current task board rows (title, lane, priority, due, assignee). Use when the user asks what's on the board.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    run: async (userId) => {
       const tasks = await prisma.task.findMany({
         where: { userId },
         orderBy: { updatedAt: "desc" },
@@ -210,9 +118,19 @@ export async function executeTool(
           assignee: t.assigneeId,
         })),
       });
-    }
-
-    if (name === "sync_connectors") {
+    },
+  },
+  {
+    spec: {
+      type: "function",
+      function: {
+        name: "sync_connectors",
+        description:
+          "Pull the user's assigned work from connected services (GitHub issues and review-requested PRs, Linear issues) onto the task board. Use when the user asks to check GitHub/Linear, sync connectors, or update the board from external tools.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    run: async (userId) => {
       const results = await syncAllConnectors(userId);
       if (results.length === 0) {
         return JSON.stringify({
@@ -229,9 +147,28 @@ export async function executeTool(
           ...(r.error ? { error: r.error } : {}),
         })),
       });
-    }
-
-    if (name === "read_page") {
+    },
+  },
+  {
+    spec: {
+      type: "function",
+      function: {
+        name: "read_page",
+        description:
+          "Fetch a public web page by URL and return its readable text (title + body, stripped of HTML). Use when the user shares a link or asks what a page says. Private/local addresses are blocked.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "Full http(s) URL of the page to read.",
+            },
+          },
+          required: ["url"],
+        },
+      },
+    },
+    run: async (_userId, args) => {
       const url = typeof args.url === "string" ? args.url.trim() : "";
       if (!url)
         return JSON.stringify({ status: "bad_request", message: "Missing url." });
@@ -240,7 +177,9 @@ export async function executeTool(
       const page = await fetchPage(url);
       if (!page.ok)
         return JSON.stringify({
-          status: page.status ? "http_error" : "fetch_failed",
+          // Plan's read_page contract: ok | blocked | http_error | too_large.
+          // Fault detail (timeout, transport, content-type) lives in message.
+          status: page.fault ?? "http_error",
           url: page.url,
           status_code: page.status,
           message: page.error,
@@ -252,9 +191,25 @@ export async function executeTool(
         // The model reads text directly; length kept in check by pageFetch.
         text: page.text,
       });
-    }
-
-    if (name === "web_search") {
+    },
+  },
+  {
+    spec: {
+      type: "function",
+      function: {
+        name: "web_search",
+        description:
+          "Best-effort web search via DuckDuckGo lite (no key required): returns top results (title, URL, snippet) for a query. Use when the user asks to look something up online. The source can be rate-limited — if it returns no results, say plainly that you couldn't search right now; never invent results.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "The search query." },
+          },
+          required: ["query"],
+        },
+      },
+    },
+    run: async (_userId, args) => {
       const query = typeof args.query === "string" ? args.query.trim() : "";
       if (!query)
         return JSON.stringify({ status: "bad_request", message: "Missing query." });
@@ -266,9 +221,44 @@ export async function executeTool(
             "Search returned no results or the provider was unreachable — tell the user you couldn't search right now.",
         });
       return JSON.stringify({ status: "ok", results });
-    }
-
-    if (name === "create_watch") {
+    },
+  },
+  {
+    spec: {
+      type: "function",
+      function: {
+        name: "create_watch",
+        description:
+          "Create a recurring watch on a public page. kind='change' alerts when the page content changes, kind='text' alerts when specific text appears, kind='price' alerts when a USD price on the page drops to or below threshold. Alerts land on the task board.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Short name for the watch." },
+            url: { type: "string", description: "Full http(s) URL to watch." },
+            kind: {
+              type: "string",
+              enum: ["change", "text", "price"],
+              description: "What to watch for.",
+            },
+            needle: {
+              type: "string",
+              description: "Text to look for (kind='text').",
+            },
+            threshold: {
+              type: "number",
+              description: "Alert when price ≤ this (kind='price'), in USD.",
+            },
+            schedule: {
+              type: "string",
+              enum: ["hourly", "daily"],
+              description: "Check frequency. Defaults to daily.",
+            },
+          },
+          required: ["name", "url", "kind"],
+        },
+      },
+    },
+    run: async (userId, args) => {
       const kind =
         args.kind === "text" || args.kind === "price" ? args.kind : "change";
       const outcome = await createWatch(userId, {
@@ -290,9 +280,29 @@ export async function executeTool(
         message:
           "Watch created — it will check on schedule and drop alerts on the task board.",
       });
-    }
-
-    if (name === "delegate_task") {
+    },
+  },
+  {
+    spec: {
+      type: "function",
+      function: {
+        name: "delegate_task",
+        description:
+          "Create a delegated background task with a step-by-step plan. The plan waits for the user's approval before it runs — present the steps and tell them where to approve (chat card or Office → Activity).",
+        parameters: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "Short task title." },
+            goal: {
+              type: "string",
+              description: "What the task should accomplish, in detail.",
+            },
+          },
+          required: ["title", "goal"],
+        },
+      },
+    },
+    run: async (userId, args, ctx) => {
       const title = typeof args.title === "string" ? args.title.trim() : "";
       const goal = typeof args.goal === "string" ? args.goal.trim() : "";
       if (!title || !goal)
@@ -311,9 +321,24 @@ export async function executeTool(
         message:
           "Delegated task created with a plan. Present the steps and tell the user to approve it in the chat card or Office → Activity.",
       });
-    }
+    },
+  },
+];
 
-    return JSON.stringify({ status: "unknown_tool", tool: name });
+/** What the model sees — derived from the table, so it can't drift. */
+export const TOOLS: ToolSpec[] = TOOL_DEFS.map((d) => d.spec);
+
+/** Execute a tool call by name. Always returns a JSON string for the model. */
+export async function executeTool(
+  userId: string,
+  name: string,
+  args: Record<string, unknown>,
+  ctx: ToolCtx,
+): Promise<string> {
+  try {
+    const tool = TOOL_DEFS.find((d) => d.spec.function.name === name);
+    if (!tool) return JSON.stringify({ status: "unknown_tool", tool: name });
+    return await tool.run(userId, args, ctx);
   } catch (err) {
     return JSON.stringify({
       status: "error",

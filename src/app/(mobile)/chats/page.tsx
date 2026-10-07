@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { timeAgoShort } from "@/lib/time";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, Plus, Pin } from "lucide-react";
@@ -20,14 +21,6 @@ interface ThreadRow {
   preview: string;
 }
 
-function timeAgo(iso: string): string {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  return `${Math.floor(hrs / 24)}d`;
-}
 
 export default function ChatsPage() {
   const router = useRouter();
@@ -110,7 +103,7 @@ export default function ChatsPage() {
                     {t.title}
                   </span>
                   <span className="shrink-0 text-[11px] text-clay">
-                    {timeAgo(t.updatedAt)}
+                    {timeAgoShort(t.updatedAt)}
                   </span>
                 </span>
                 <span className="mt-0.5 block truncate text-[13px] text-sand">

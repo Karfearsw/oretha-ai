@@ -8,10 +8,22 @@
  * re-read from the DB before every step, so pause/cancel from another
  * request takes effect mid-run.
  *
- * Lease: `leaseUntil` is renewed before each step. If the process dies
- * mid-run (Vercel function timeout, crash), the row is left `running`
- * with an expired lease — `recoverStaleTasks()` (sweeper) resumes it, or
- * fails it after 3 attempts. This is the OpenMuse SQL-lease pattern.
+ * Lease: the transition to `running` and its lease are written in ONE
+ * atomic update (`beginAgentTaskRun`), and the API awaits it before
+ * responding — so a row can never be observed as `running` with a NULL
+ * or stale lease after the response, even if the process freezes before
+ * the fire-and-forget runner starts (then the sweeper reclaims it when
+ * the lease expires). Every runner write is a compare-and-swap on
+ * `status: running` + the exact lease value it holds, so a pause, cancel,
+ * or a lease stolen by recovery always beats a runner that wakes up late.
+ * `recoverStaleTasks()` reclaims `running` rows whose lease is expired
+ * OR NULL (legacy/orned shapes), resuming them or failing them after 3
+ * attempts. This is the OpenMuse SQL-lease pattern.
+ *
+ * This module owns the whole AgentTask contract: the transition table
+ * (which action is legal from which status — `applyAgentTaskAction`),
+ * the lease, the runner, and recovery. HTTP routes stay thin: they
+ * authorize, parse, and map this module's results to status codes.
  *
  * Nothing here throws across a call boundary: failures land in
  * `status: failed` + `lastError` so the UI always has a truthful state.
@@ -145,26 +157,65 @@ export async function createAgentTask(
   });
 }
 
-/** Renew the lease if it's free or ours. Returns false when someone else holds it. */
-async function takeLease(id: string): Promise<boolean> {
+/** Claim a free or expired lease on a `running` row. Returns the lease
+ * value we now hold, or null when another worker owns it (or the row
+ * isn't running anymore). */
+async function claimLease(id: string): Promise<Date | null> {
+  const lease = new Date(Date.now() + LEASE_MS);
   const res = await prisma.agentTask.updateMany({
     where: {
       id,
+      status: "running",
       OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }],
     },
-    data: { leaseUntil: new Date(Date.now() + LEASE_MS), attempts: { increment: 1 } },
+    data: { leaseUntil: lease, attempts: { increment: 1 } },
   });
-  return res.count === 1;
+  return res.count === 1 ? lease : null;
+}
+
+/**
+ * Atomically move a task into `running` AND establish its lease in the
+ * same write. Await this BEFORE the API response returns — that is what
+ * closes the freeze window (approve/resume/retry can never commit a
+ * `running` + NULL lease). Returns the held lease on success (pass it to
+ * `startAgentTask`), or null when `from` no longer matches — a concurrent
+ * pause/cancel/retry won and the caller should respond 409.
+ */
+export async function beginAgentTaskRun(
+  id: string,
+  from: AgentTaskStatus[],
+  extra: { resetAttempts?: boolean; steps?: string; currentStep?: number } = {},
+): Promise<Date | null> {
+  const lease = new Date(Date.now() + LEASE_MS);
+  const res = await prisma.agentTask.updateMany({
+    where: { id, status: { in: from } },
+    data: {
+      status: "running",
+      leaseUntil: lease,
+      lastError: null,
+      ...(extra.resetAttempts ? { attempts: 0 } : {}),
+      ...(extra.steps !== undefined ? { steps: extra.steps } : {}),
+      ...(extra.currentStep !== undefined ? { currentStep: extra.currentStep } : {}),
+    },
+  });
+  return res.count === 1 ? lease : null;
 }
 
 /**
  * Execute a task's remaining steps. Fire-and-forget safe: never throws.
- * Re-reads `status` before each step so pause/cancel wins over the loop.
+ * `opts.lease` = the caller already established the lease (approve/
+ * resume/retry path); otherwise claim a free/expired one (recovery path).
+ * Every step write is a compare-and-swap on `status: running` + the held
+ * lease value, so pause/cancel/steal beats a runner waking up late.
  */
-export async function runAgentTask(id: string): Promise<void> {
+export async function runAgentTask(
+  id: string,
+  opts: { lease?: Date } = {},
+): Promise<void> {
   const task = await prisma.agentTask.findUnique({ where: { id } });
   if (!task || task.status !== "running") return;
-  if (!(await takeLease(id))) return; // another worker owns it
+  const held = opts.lease ?? (await claimLease(id));
+  if (!held) return; // another worker owns it
 
   const steps = parseSteps(task.steps);
   // A step left `running` by a crashed process isn't running anymore —
@@ -180,20 +231,17 @@ export async function runAgentTask(id: string): Promise<void> {
     }
   }
   const system = await buildSystemMessages(task.userId);
+  let heldLease = held; // renewed with each step; CAS always uses the current value
 
   for (let i = start; i < steps.length; i++) {
-    // Pause/cancel honored between steps.
-    const fresh = await prisma.agentTask.findUnique({
-      where: { id },
-      select: { status: true },
-    });
-    if (!fresh || fresh.status !== "running") return; // lease stays for recovery
-
     steps[i].status = "running";
-    await prisma.agentTask.update({
-      where: { id },
+    // Compare-and-swap: if we're no longer `running` with OUR lease
+    // (paused, cancelled, or stolen by recovery), stop — their state wins.
+    const marked = await prisma.agentTask.updateMany({
+      where: { id, status: "running", leaseUntil: heldLease },
       data: { steps: JSON.stringify(steps), currentStep: i },
     });
+    if (marked.count !== 1) return;
 
     try {
       const answer = await chatComplete(
@@ -212,19 +260,26 @@ export async function runAgentTask(id: string): Promise<void> {
       );
       steps[i].status = "complete";
       steps[i].receipt = answer.slice(0, 400);
-      await prisma.agentTask.update({
-        where: { id },
+      // Advance + renew the lease in one CAS'd write, then keep holding
+      // the new value so a stale copy of this runner can't write anymore.
+      const renewed = new Date(Date.now() + LEASE_MS);
+      const advanced = await prisma.agentTask.updateMany({
+        where: { id, status: "running", leaseUntil: heldLease },
         data: {
           steps: JSON.stringify(steps),
           currentStep: i + 1,
-          leaseUntil: new Date(Date.now() + LEASE_MS),
+          leaseUntil: renewed,
         },
       });
+      if (advanced.count !== 1) return; // cancelled/stolen mid-step
+      heldLease = renewed;
     } catch (err) {
       steps[i].status = "failed";
       const message = err instanceof Error ? err.message : "step failed";
-      await prisma.agentTask.update({
-        where: { id },
+      // Only fail the task if we still own it; otherwise the winner's
+      // state (paused/cancelled/another runner) must not be overwritten.
+      await prisma.agentTask.updateMany({
+        where: { id, status: "running", leaseUntil: heldLease },
         data: {
           steps: JSON.stringify(steps),
           status: "failed",
@@ -239,28 +294,32 @@ export async function runAgentTask(id: string): Promise<void> {
   const summary =
     steps[steps.length - 1]?.receipt?.slice(0, 300) ||
     `Completed ${steps.length} step${steps.length === 1 ? "" : "s"}.`;
-  await prisma.agentTask.update({
-    where: { id },
+  await prisma.agentTask.updateMany({
+    where: { id, status: "running", leaseUntil: heldLease },
     data: { status: "complete", summary, leaseUntil: null, lastError: null },
   });
 }
 
-/** Kick off a run (fire-and-forget). Returns immediately. */
-export function startAgentTask(id: string): void {
-  void runAgentTask(id).catch((err) => {
+/** Kick off a run (fire-and-forget). Pass `lease` when the caller already
+ * established it synchronously (approve/resume/retry); otherwise the
+ * runner claims a free/expired lease itself (recovery path). */
+export function startAgentTask(id: string, opts: { lease?: Date } = {}): void {
+  void runAgentTask(id, opts).catch((err) => {
     console.error("[agentTasks] run failed:", err);
   });
 }
 
 /**
- * Reclaim runs whose owner died mid-task: `running` with an expired lease
- * → resume (if attempts remain) or fail honestly. Called by the sweeper.
+ * Reclaim runs whose owner died mid-task: `running` rows whose lease is
+ * EXPIRED or NULL (any stale shape — NULL can't match Prisma's `lt`
+ * filter, so it must be OR'd explicitly). Resume if attempts remain,
+ * else fail honestly. Called by the sweeper.
  */
 export async function recoverStaleTasks(): Promise<{ resumed: number; failed: number }> {
   const stale = await prisma.agentTask.findMany({
     where: {
       status: "running",
-      leaseUntil: { lt: new Date() },
+      OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }],
     },
     take: 10,
   });
@@ -269,8 +328,8 @@ export async function recoverStaleTasks(): Promise<{ resumed: number; failed: nu
   let failed = 0;
   for (const t of stale) {
     if (t.attempts >= MAX_ATTEMPTS) {
-      await prisma.agentTask.update({
-        where: { id: t.id },
+      await prisma.agentTask.updateMany({
+        where: { id: t.id, status: "running", attempts: { gte: MAX_ATTEMPTS } },
         data: {
           status: "failed",
           lastError: `Interrupted ${t.attempts} times without finishing.`,
@@ -279,9 +338,103 @@ export async function recoverStaleTasks(): Promise<{ resumed: number; failed: nu
       });
       failed++;
     } else {
-      startAgentTask(t.id); // takeLease renews the expired lease
+      startAgentTask(t.id); // claimLease takes the free/expired lease
       resumed++;
     }
   }
   return { resumed, failed };
+}
+
+/* ── User actions: the transition table ────────────────────────────── */
+
+export const AGENT_TASK_ACTIONS = [
+  "approve",
+  "pause",
+  "resume",
+  "cancel",
+  "retry",
+] as const;
+
+export type AgentTaskAction = (typeof AGENT_TASK_ACTIONS)[number];
+
+export type AgentTaskActionResult =
+  | { ok: true; status: string }
+  | { ok: false; error: string };
+
+/**
+ * Apply a user action to a task the caller has already authorized.
+ * This is the single owner of the transition policy: which actions are
+ * legal from which status (with the user-facing refusal messages), the
+ * atomic begin for approve/resume/retry, and the runner hand-off. Every
+ * refusal is a conflict — the HTTP layer maps `{ok:false}` to 409 and
+ * `{ok:true}` to 200 with `{task:{id,status}}`.
+ */
+export async function applyAgentTaskAction(
+  task: { id: string; status: string; steps: string },
+  action: AgentTaskAction,
+): Promise<AgentTaskActionResult> {
+  // approve: awaiting_approval → running (lease + runner in one begin).
+  if (action === "approve") {
+    if (task.status !== "awaiting_approval")
+      return {
+        ok: false,
+        error: `Task is ${task.status} — only awaiting_approval tasks can be approved.`,
+      };
+    const lease = await beginAgentTaskRun(task.id, ["awaiting_approval"], {
+      resetAttempts: true,
+    });
+    if (!lease) return { ok: false, error: "Task state changed — try again." };
+    startAgentTask(task.id, { lease });
+    return { ok: true, status: "running" };
+  }
+
+  // pause: running → paused; the lease is kept so the runner's next CAS
+  // fails and it stops without writing over this state.
+  if (action === "pause") {
+    if (task.status !== "running")
+      return { ok: false, error: `Task is ${task.status} — nothing to pause.` };
+    await prisma.agentTask.update({ where: { id: task.id }, data: { status: "paused" } });
+    return { ok: true, status: "paused" };
+  }
+
+  // resume: paused → running with a fresh lease.
+  if (action === "resume") {
+    if (task.status !== "paused")
+      return { ok: false, error: `Task is ${task.status} — nothing to resume.` };
+    const lease = await beginAgentTaskRun(task.id, ["paused"]);
+    if (!lease) return { ok: false, error: "Task state changed — try again." };
+    startAgentTask(task.id, { lease });
+    return { ok: true, status: "running" };
+  }
+
+  // cancel: anything non-terminal → cancelled, lease released; the CAS'd
+  // runner writes then lose, so this always wins.
+  if (action === "cancel") {
+    if (task.status === "complete" || task.status === "cancelled")
+      return { ok: false, error: `Task is already ${task.status}.` };
+    await prisma.agentTask.update({
+      where: { id: task.id },
+      data: { status: "cancelled", leaseUntil: null },
+    });
+    return { ok: true, status: "cancelled" };
+  }
+
+  // retry: failed|cancelled → running; failed steps go back to pending so
+  // receipts aren't stale, attempts reset, resume from step 0.
+  if (task.status !== "failed" && task.status !== "cancelled")
+    return {
+      ok: false,
+      error: `Task is ${task.status} — only failed or cancelled tasks can be retried.`,
+    };
+  const steps = parseSteps(task.steps).map((s) =>
+    s.status === "failed" ? { ...s, status: "pending" as const } : s,
+  );
+  const lease = await beginAgentTaskRun(task.id, ["failed", "cancelled"], {
+    resetAttempts: true,
+    steps: JSON.stringify(steps),
+    currentStep: 0,
+  });
+  if (!lease) return { ok: false, error: "Task state changed — try again." };
+  startAgentTask(task.id, { lease });
+  return { ok: true, status: "running" };
 }
