@@ -1,15 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Mic } from "lucide-react";
+import { ChevronDown, Mic, Send } from "lucide-react";
 import { ForgeBuilder } from "@/components/forge/ForgeBuilder";
 import { InterviewFlow } from "@/components/forge/InterviewFlow";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { EXAMPLE_PROMPTS, SIX_LESSONS, type ForgeFields } from "@/lib/promptForge";
 
-export default function ForgePage() {
+/**
+ * Prompt Forge page body — shared by the public /forge route (logged-out
+ * visitors) and the signed-in in-app experience. The shell around it
+ * (AppShell vs the public shell) is decided by src/app/forge/layout.tsx.
+ *
+ * `signedIn` means the visitor can send to chat: a session exists and setup
+ * is complete. When false, "Send to chat" never fires — the gate below
+ * points at /welcome instead, so it can never fail silently on a 401.
+ */
+export function ForgePage({ signedIn }: { signedIn: boolean }) {
   const router = useRouter();
   const [draft, setDraft] = useState("");
   const [builderKey, setBuilderKey] = useState(0);
@@ -43,7 +53,7 @@ export default function ForgePage() {
   };
 
   return (
-    <main className="pad-safe-top flex flex-col gap-5 px-4 pt-2">
+    <main className="flex flex-col gap-5 px-4 pt-2">
       <header>
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gold">
           KSWBST · IN OTP WE TRUST · Flip • Stack • Win
@@ -84,8 +94,18 @@ export default function ForgePage() {
         key={builderKey}
         initialDraft={draft}
         initialFields={interviewFields ?? undefined}
-        onSendToChat={sendToChat}
+        onSendToChat={signedIn ? sendToChat : undefined}
       />
+
+      {/* Logged-out gate: never let "Send to chat" fail silently on a 401. */}
+      {!signedIn && (
+        <Link
+          href="/welcome"
+          className="inline-flex h-13 w-full select-none items-center justify-center gap-2 rounded-[16px] bg-gold px-6 font-display text-[16px] font-semibold text-canvas transition active:scale-[0.97]"
+        >
+          <Send size={16} /> Sign in to send this to your crew
+        </Link>
+      )}
 
       {/* Real examples, audited scores */}
       <section aria-label="Real examples">

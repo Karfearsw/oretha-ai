@@ -123,7 +123,7 @@ export default function MediaLabPage() {
           <span className="flex-1">
             <span className="block text-[14.5px] font-semibold text-cream">Prompt Forge</span>
             <span className="block text-[12px] leading-snug text-sand">
-              Score a rough ask on the 4-part brief, then forge it into a clean prompt, a task, or a BMAD build.
+              Score a rough ask on the 4-part brief, then forge it into a clean prompt, a task, or a BMAD build. Free — no account needed.
             </span>
           </span>
           <span className="text-[12px] font-semibold text-gold">Open →</span>
