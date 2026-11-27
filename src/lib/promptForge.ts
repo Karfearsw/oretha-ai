@@ -393,3 +393,377 @@ export const MODE_LABELS: Record<ForgeMode, string> = {
   task: "Task brief",
   bmad: "BMAD Build",
 };
+
+/**
+ * Lesson 7 — how the #1 AI engineer actually uses AI.
+ *
+ * Andrej Karpathy (co-founded OpenAI, ran AI at Tesla, coined "vibe
+ * coding", now at Anthropic), as reported by Nick Saraev in "How The #1 AI
+ * Engineer in The World Actually Uses AI" (Nov 5, 2026), from Karpathy's
+ * blog, X, and Hacker News posts. The six Anthropic lessons above are
+ * untouched; this is the seventh lesson, in the same format.
+ */
+export interface KarpathyPrinciple {
+  title: string;
+  line: string;
+}
+
+export const KARPATHY_LESSON: {
+  title: string;
+  intro: string;
+  principles: KarpathyPrinciple[];
+  sources: string;
+} = {
+  title: "7. How the #1 AI engineer actually uses AI",
+  intro:
+    "Andrej Karpathy — co-founded OpenAI, ran AI at Tesla, coined “vibe coding”, now at Anthropic — as reported by Nick Saraev (Nov 5, 2026) from Karpathy's blog, X, and Hacker News posts.",
+  principles: [
+    {
+      title: "Don't do the engineering",
+      line: "Talk to the model; it does the work. You decide what gets done and check how it turned out. Reviewing a result is much cheaper than producing it.",
+    },
+    {
+      title: "Short prompts, plain English",
+      line: "Explain in ASD — aircraft-manual English: few words, strict vocabulary. Adding requirements often makes output worse, because our requests quietly contradict each other.",
+    },
+    {
+      title: "Pictures beat explanations",
+      line: "If you don't understand something, ask for a diagram, an HTML page, or an explainer video — a picture is worth a thousand words and faster to digest than a thousand words.",
+    },
+    {
+      title: "Don't trust public benchmarks",
+      line: "Most are flawed. Judge a model by how it interacts and communicates — Karpathy points to Epoch's ECI, a benchmark of benchmarks.",
+    },
+    {
+      title: "Run small probe tests",
+      line: "Ask “land or water?” for coordinates and build a world map from the answers — a quick probe shows what knowledge is actually compressed in the model's neurons.",
+    },
+    {
+      title: "Cheap filters, then delegate down",
+      line: "Let the strong model build filters (strip URLs, reposts, spam), then hand the clean remainder to cheaper sub-agents — Opus on medium delegating to Sonnet sub-agents. And build a fix the moment something annoys you: he saw clickbait thumbnails and built HackerTube.",
+    },
+    {
+      title: "Share the data + the prompt, not the app",
+      line: "Most apps are wrappers around data. Share the data source and the prompt and anyone can build their own version with a model.",
+    },
+  ],
+  sources:
+    "Video: Nick Saraev, “How The #1 AI Engineer in The World Actually Uses AI” (Nov 5, 2026) — youtube.com/watch?v=3wCkFtIz88g. Anthropic research: “How Claude Code is used in practice” and “How employment is changing at Anthropic” (anthropic.com/research).",
+};
+
+/**
+ * Lesson 8 — don't build agents, build skills.
+ *
+ * Jay E / RoboNuggets, "Anthropic's Engineers Stopped Building AI Agents
+ * (Here's What They Build Instead)" (Nov 23, 2026), from Anthropic
+ * engineers Barry Zhang and Mahesh Murag's talk "Don't Build Agents, Build
+ * Skills Instead". Model = chip, agent = OS, skills = apps.
+ */
+export interface SkillLevel {
+  level: string;
+  title: string;
+  line: string;
+}
+
+export const SKILLS_LESSON: {
+  title: string;
+  intro: string;
+  analogy: string;
+  levels: SkillLevel[];
+  rules: string[];
+  sources: string;
+} = {
+  title: "8. Don't build agents, build skills",
+  intro:
+    "Jay E / RoboNuggets, “Anthropic's Engineers Stopped Building AI Agents (Here's What They Build Instead)” (Nov 23, 2026), from Anthropic engineers Barry Zhang and Mahesh Murag's talk “Don't Build Agents, Build Skills Instead”.",
+  analogy:
+    "The model is the chip. The agent is the operating system. Skills are the apps — when your computer needs to do something new, you install an app, not a new computer. One good agent plus a growing library of skills beats ten half-trained agents.",
+  levels: [
+    {
+      level: "Level 0",
+      title: "Write it by hand",
+      line: "A skill is a folder with a SKILL.md: a name, a description, then plain-English steps — plus templates, examples, and scripts where they help.",
+    },
+    {
+      level: "Level 1",
+      title: "Skill creator",
+      line: "Ask Claude to build the skill for you — describe the job and let it draft the SKILL.md.",
+    },
+    {
+      level: "Level 2",
+      title: "Do it once, then “skillify” it — the recommended one",
+      line: "Do the task with the AI, correct it like a new hire, then turn the finished session into a skill. The corrections are the skill.",
+    },
+    {
+      level: "Level 3",
+      title: "Record your screen",
+      line: "Record yourself doing the workflow once and let Claude learn the steps from the recording.",
+    },
+    {
+      level: "Level 4",
+      title: "Skills that aren't steps",
+      line: "Not every skill is a procedure: database skills (how to read your data), artifact / brand skills (how things should look and sound), definition skills (what your terms mean), and one-liners.",
+    },
+    {
+      level: "Level 5",
+      title: "Borrow skills",
+      line: "Take skills from skills.sh and the Claude directory instead of writing every one yourself. Security warning: read a skill before installing it — it can contain scripts.",
+    },
+    {
+      level: "Level 6",
+      title: "Sometimes no skills at all",
+      line: "Boris Cherny's rule: test removing instruction files every 6 months. Old instructions can hobble a newer model. (The 80% system-prompt-cut figure in the video is unverified — treat it as a claim, not a fact.)",
+    },
+  ],
+  rules: [
+    "Fix the skill, not the chat — when something goes wrong, change one line in the skill so every future run is fixed.",
+    "Let Claude interview you — it asks how you do the work, and the answers become the skill.",
+    "Define what done means in the skill, so the agent grades its own output before it reaches you.",
+    "Progressive disclosure: the toolbox stays closed until needed — the agent reads only names and descriptions, then opens the one skill that fits.",
+  ],
+  sources:
+    "Video: Jay E / RoboNuggets, “Anthropic's Engineers Stopped Building AI Agents (Here's What They Build Instead)” (Nov 23, 2026). Talk: Barry Zhang and Mahesh Murag, “Don't Build Agents, Build Skills Instead” (Anthropic).",
+};
+
+/**
+ * The 7 departments of the AI Agent Map (Nov 20, 2026) — 137 agent jobs in
+ * total, each one job, one workflow, one approval gate. The full registry
+ * lives in the Oretha FDE RDP v0.4, inside the KEVO Virtual Office, with
+ * Oretha as the one orchestrator agent talking to the department sub-agents.
+ * Each department here loads one real job-brief starter into the builder —
+ * a forged brief (Job / Why / Guardrails / Done), not placeholder text.
+ */
+export interface DepartmentStarter {
+  id: string;
+  name: string;
+  /** Agent jobs in this department on the map. */
+  jobs: number;
+  tagline: string;
+  starter: ForgeFields;
+  /**
+   * The same job as a SKILL.md. The merge: the 137 jobs become skills for
+   * the one Oretha agent, grouped into 7 department folders — not 137
+   * separate agents. The description is the trigger, written for the agent.
+   */
+  skill: {
+    name: string;
+    description: string;
+    steps: string[];
+  };
+}
+
+/** Render one department's starter job as a SKILL.md file. */
+export function buildSkillMarkdown(dept: DepartmentStarter): string {
+  const lines = [
+    "---",
+    `name: ${dept.skill.name}`,
+    `description: ${dept.skill.description}`,
+    "---",
+    "",
+    `# ${dept.name} — ${dept.skill.name}`,
+    "",
+    "## When to use this skill",
+    dept.skill.description,
+    "",
+    "## Steps",
+    ...dept.skill.steps.map((s, i) => `${i + 1}. ${s}`),
+    "",
+    "## Done means",
+    dept.starter.done,
+    "",
+    "## Guardrails",
+    dept.starter.guardrails,
+  ];
+  return lines.join("\n");
+}
+
+export const DEPARTMENTS: DepartmentStarter[] = [
+  {
+    id: "sales",
+    name: "Sales",
+    jobs: 22,
+    tagline: "Finding leads, reading replies, booking calls.",
+    starter: {
+      role: "my Sales agent",
+      job: "Score today's new leads and draft a follow-up for each one that is warm. Read every reply, score it hot, warm, or cold, and draft the next message in my voice for the warm ones only.",
+      why: "So no warm lead goes cold while I am doing other work, and I only spend my time on people who already replied.",
+      guardrails:
+        "Draft only — never send anything, never call anyone. Do not invent a name, price, or promise. If a reply is unclear, mark it unclear instead of guessing.",
+      done: "A scored list of every lead with hot / warm / cold, a draft follow-up for each warm lead, and nothing sent. I approve every send.",
+    },
+    skill: {
+      name: "lead-scoring",
+      description:
+        "Use when new leads arrive or replies come in: score each lead hot, warm, or cold and draft the next message for the warm ones.",
+      steps: [
+        "Read every new lead and every reply in full before scoring anything.",
+        "Score each one hot, warm, or cold — hot replied with interest, warm replied at all, cold no reply yet.",
+        "For each warm lead, draft the next message in my voice, naming what they actually said back.",
+        "Draft only. Never send anything and never call anyone.",
+        "If a reply is unclear, mark it unclear instead of guessing what it means.",
+        "Hand back the scored list with a draft follow-up for each warm lead.",
+      ],
+    },
+  },
+  {
+    id: "deals",
+    name: "Deals",
+    jobs: 24,
+    tagline: "Comps, cash flow, deal memos.",
+    starter: {
+      role: "my Deals agent (Booker)",
+      job: "Refresh the comps on one property and write a one-page deal memo: ARV from the three closest comparable sales, estimated repairs, cash flow at the asking price, and the highest offer that still leaves a margin.",
+      why: "So I can make an offer the same day I see a deal, with numbers I can defend instead of a guess.",
+      guardrails:
+        "Use real comparable sales only — never invent a comp, an ARV, or a repair cost. If a number is missing, write “unknown” and say what would confirm it. Do not contact the seller.",
+      done: "A one-page memo with three real comps cited, ARV, repair estimate, cash flow, and a max offer — every number traceable to its source.",
+    },
+    skill: {
+      name: "deal-memo",
+      description:
+        "Use when a property needs a yes/no: refresh the comps and write a one-page deal memo with ARV, repairs, cash flow, and a max offer.",
+      steps: [
+        "Pull the three closest comparable sales — same area, same bed/bath range, sold in the last six months.",
+        "Set the ARV from those three comps and cite each one.",
+        "Estimate repairs line by line; if a cost is unknown, write “unknown” and say what would confirm it.",
+        "Work out the cash flow at the asking price, then the highest offer that still leaves a margin.",
+        "Write the one-page memo: comps, ARV, repairs, cash flow, max offer.",
+        "Do not contact the seller. Do not invent a comp, an ARV, or a repair cost.",
+      ],
+    },
+  },
+  {
+    id: "marketing",
+    name: "Marketing",
+    jobs: 23,
+    tagline: "Content, media, scheduled posts.",
+    starter: {
+      role: "my Marketing agent (Muse)",
+      job: "Draft today's post for @whoisotp from the facts I give you: one hook, one story, one call to action, in my voice. Keep it short enough to read in ten seconds.",
+      why: "So I post every day without spending an hour staring at a blank caption.",
+      guardrails:
+        "Use only facts I provided — never invent a price, a result, or a quote. Keep the trolling on @stackk10m, never on @whoisotp. Draft only — I approve the exact post before anything goes out.",
+      done: "One finished caption with hook, story, and call to action, plus three hashtag options. Nothing posted.",
+    },
+    skill: {
+      name: "post-draft",
+      description:
+        "Use when a post is due: draft one finished caption from facts I provide — hook, story, call to action — in my voice.",
+      steps: [
+        "Take only the facts I provided. Never invent a price, a result, or a quote.",
+        "Write one hook that stops the scroll in the first line.",
+        "Tell the story in my voice, short enough to read in ten seconds.",
+        "End with one call to action — one thing, not three.",
+        "Add three hashtag options.",
+        "Draft only. Keep the trolling on @stackk10m, never on @whoisotp. I approve the exact post before anything goes out.",
+      ],
+    },
+  },
+  {
+    id: "operations",
+    name: "Operations",
+    jobs: 19,
+    tagline: "Onboarding, status updates, task board.",
+    starter: {
+      role: "my Operations agent (Steward)",
+      job: "Build the new-client onboarding checklist for a client who just signed: the five setup steps in order, who does each one, and what “done” looks like for each step. Then draft the client a status update in plain language.",
+      why: "So a new client is fully set up on day one instead of waiting a week while steps get forgotten.",
+      guardrails:
+        "Draft the status update only — do not send it. Never share another client's details. If a step needs information we do not have, list it as a question for me instead of guessing.",
+      done: "A checklist with five steps, an owner per step, a done-check per step, and a drafted status update waiting for my yes.",
+    },
+    skill: {
+      name: "client-onboarding",
+      description:
+        "Use when a client just signed: build the onboarding checklist and draft their day-one status update.",
+      steps: [
+        "List the five setup steps in order, from first contact to fully set up.",
+        "Give each step an owner and a done-check that proves it is finished.",
+        "If a step needs information we do not have, list it as a question for me instead of guessing.",
+        "Draft the client a status update in plain language — what is done, what is next, and when.",
+        "Draft only. Never share another client's details. The update waits for my yes.",
+      ],
+    },
+  },
+  {
+    id: "customer",
+    name: "Customer",
+    jobs: 14,
+    tagline: "Support chat and triage.",
+    starter: {
+      role: "my Customer agent",
+      job: "Triage today's support messages: answer the ones our help pages already cover, using only the wording in those pages, and escalate anything about money, refunds, or a complaint to me with a one-line summary.",
+      why: "So simple questions get answered in minutes and I only touch the ones that actually need a human.",
+      guardrails:
+        "Answer only from our own help pages — never invent a policy, a price, or a promise. Never issue a refund or change an order. If you are not sure, escalate instead of answering.",
+      done: "Every message answered from a cited help page or escalated with a summary. Zero refunds or order changes made by the agent.",
+    },
+    skill: {
+      name: "support-triage",
+      description:
+        "Use when support messages arrive: answer from our help pages or escalate money, refunds, and complaints to me with a one-line summary.",
+      steps: [
+        "Read each message and find the matching help page, if one exists.",
+        "Answer only with the wording on that page, and cite the page.",
+        "Escalate anything about money, refunds, or a complaint — with a one-line summary — instead of answering.",
+        "If no help page covers it, or you are not sure, escalate instead of answering.",
+        "Never issue a refund or change an order. Never invent a policy, a price, or a promise.",
+      ],
+    },
+  },
+  {
+    id: "back-office",
+    name: "Back Office",
+    jobs: 18,
+    tagline: "Invoices, payment chasing, books.",
+    starter: {
+      role: "my Back Office agent (Mailroom)",
+      job: "Run the payment chaser on the overdue invoice list: Day 1 polite nudge, Day 7 firmer email with the invoice attached, Day 14 alert to me with the full history. Stop the moment a payment is marked received.",
+      why: "So invoices get paid without me chasing people, and nobody gets chased after they already paid.",
+      guardrails:
+        "Use the contract's own payment terms when answering questions. Never threaten, never add a fee that is not in the contract. Draft the Day 7 and Day 14 messages for my approval — send nothing without my yes.",
+      done: "Every overdue invoice has the right step sent or drafted, paid invoices are marked paid with a thank-you sent, and nothing was chased after payment.",
+    },
+    skill: {
+      name: "payment-chaser",
+      description:
+        "Use on the overdue invoice list: run the Day 1 / Day 7 / Day 14 chase and stop the moment a payment is marked received.",
+      steps: [
+        "Check the overdue list and confirm which invoices are still unpaid.",
+        "Day 1: send a polite nudge with the invoice attached.",
+        "Day 7: send a firmer email with the invoice attached — draft it for my approval first.",
+        "Day 14: alert me with the full history — draft it for my approval first.",
+        "Answer terms questions only from the contract's own payment terms.",
+        "The moment a payment is marked received: stop the chase, mark the invoice paid, send a thank-you.",
+        "Never threaten, never add a fee that is not in the contract.",
+      ],
+    },
+  },
+  {
+    id: "intelligence",
+    name: "Intelligence",
+    jobs: 17,
+    tagline: "The 7am brief and the yes/no panel.",
+    starter: {
+      role: "my Intelligence agent",
+      job: "Write today's 7am brief on one page: what closed, what stalled, what needs me — plus a “Needs your yes” panel holding every item that touches a client or money, each with one line of context and the exact action waiting on me.",
+      why: "So I start the day knowing the whole business in one minute instead of digging through six apps.",
+      guardrails:
+        "Only use what the other departments recorded — never invent a closed deal, a payment, or a lead. If the numbers disagree between two sources, show both and flag it. Nothing in the brief sends, books, or pays anything.",
+      done: "One page by 7am: closed, stalled, needs-me, and a yes/no panel with every client- or money-touching item and its waiting action.",
+    },
+    skill: {
+      name: "morning-brief",
+      description:
+        "Use every morning: write the one-page 7am brief — what closed, what stalled, what needs the owner — plus the 'Needs your yes' panel.",
+      steps: [
+        "Gather what each department recorded since the last brief: closed, stalled, and waiting items.",
+        "Write one page: what closed, what stalled, what needs me — in that order.",
+        "Build the “Needs your yes” panel: every item that touches a client or money, one line of context each, and the exact action waiting on me.",
+        "If two sources disagree on a number, show both and flag it — never pick one silently.",
+        "Never invent a closed deal, a payment, or a lead. Only use what the departments recorded.",
+        "Nothing in the brief sends, books, or pays anything.",
+      ],
+    },
+  },
+];
