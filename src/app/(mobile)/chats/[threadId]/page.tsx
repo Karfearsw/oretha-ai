@@ -28,8 +28,10 @@ import {
   Trash2,
   Volume2,
   VolumeX,
+  Wand2,
 } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
+import { ForgeBuilder } from "@/components/forge/ForgeBuilder";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import type { SegmentItem } from "@/components/ui/SegmentedControl";
 import { FileSheet } from "@/components/ui/FileSheet";
@@ -106,6 +108,7 @@ export default function ChatRoomPage() {
   const [fileOpen, setFileOpen] = useState<string | null>(null);
   const [dbFiles, setDbFiles] = useState<Record<string, string>>({});
   const [plusOpen, setPlusOpen] = useState(false);
+  const [forgeOpen, setForgeOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameText, setRenameText] = useState("");
@@ -670,6 +673,14 @@ export default function ChatRoomPage() {
               <Mic size={20} />
             </button>
           )}
+          <button
+            aria-label="Forge this prompt"
+            title="Forge this prompt"
+            onClick={() => setForgeOpen(true)}
+            className="px-1 text-gold transition active:scale-90"
+          >
+            <Wand2 size={20} />
+          </button>
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={busy ? stop : send}
@@ -684,6 +695,18 @@ export default function ChatRoomPage() {
           </motion.button>
         </div>
       </div>
+
+      {/* Prompt Forge sheet — score + forge the draft, apply back to the composer. Never sends. */}
+      <Sheet open={forgeOpen} onClose={() => setForgeOpen(false)} title="Prompt Forge">
+        <ForgeBuilder
+          key={forgeOpen ? "open" : "closed"}
+          initialDraft={input}
+          onApply={(text) => {
+            setInput(text);
+            setForgeOpen(false);
+          }}
+        />
+      </Sheet>
 
       {/* Quick-actions sheet (the "+" button) */}
       <Sheet open={plusOpen} onClose={() => setPlusOpen(false)} title="Quick actions">

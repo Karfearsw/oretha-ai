@@ -112,6 +112,24 @@ export default function MediaLabPage() {
         </Button>
       </section>
 
+      <section aria-label="Prompt Forge">
+        <button
+          onClick={() => router.push("/forge")}
+          className="flex w-full items-center gap-3.5 rounded-[16px] border border-gold/30 bg-gold/10 p-4 text-left transition active:scale-[0.98]"
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold">
+            <OrethaIcon name="guides" size={18} tone="gold" />
+          </span>
+          <span className="flex-1">
+            <span className="block text-[14.5px] font-semibold text-cream">Prompt Forge</span>
+            <span className="block text-[12px] leading-snug text-sand">
+              Score a rough ask on the 4-part brief, then forge it into a clean prompt, a task, or a BMAD build.
+            </span>
+          </span>
+          <span className="text-[12px] font-semibold text-gold">Open →</span>
+        </button>
+      </section>
+
       <section aria-label="Creative agents">
         <h2 className="mb-2.5 font-display text-[16px] font-bold text-cream">
           Creative crew
