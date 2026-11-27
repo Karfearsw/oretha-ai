@@ -3,12 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Mic, Send } from "lucide-react";
+import { ChevronDown, Check, Copy, Mic, Send } from "lucide-react";
 import { ForgeBuilder } from "@/components/forge/ForgeBuilder";
 import { InterviewFlow } from "@/components/forge/InterviewFlow";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
-import { EXAMPLE_PROMPTS, SIX_LESSONS, type ForgeFields } from "@/lib/promptForge";
+import { EXAMPLE_PROMPTS, SIX_LESSONS, KARPATHY_LESSON, SKILLS_LESSON, DEPARTMENTS, buildSkillMarkdown, type DepartmentStarter, type ForgeFields } from "@/lib/promptForge";
 
 /**
  * Prompt Forge page body — shared by the public /forge route (logged-out
@@ -24,17 +24,49 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
   const [draft, setDraft] = useState("");
   const [builderKey, setBuilderKey] = useState(0);
   const [activeExample, setActiveExample] = useState<number | null>(null);
+  const [activeDepartment, setActiveDepartment] = useState<string | null>(null);
   const [lessonsOpen, setLessonsOpen] = useState(false);
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [interviewFields, setInterviewFields] = useState<ForgeFields | null>(null);
   const [sending, setSending] = useState(false);
+  const [skillCopied, setSkillCopied] = useState(false);
+
+  const activeDept = DEPARTMENTS.find((d) => d.id === activeDepartment) ?? null;
+
+  const copySkill = async () => {
+    if (!activeDept) return;
+    const text = buildSkillMarkdown(activeDept);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    setSkillCopied(true);
+    window.setTimeout(() => setSkillCopied(false), 2000);
+  };
 
   const loadExample = (i: number) => {
     const ex = EXAMPLE_PROMPTS[i];
     setDraft(ex.text);
     setActiveExample(i);
+    setActiveDepartment(null);
     setInterviewFields(null);
     // Remount the builder so it picks up the new draft as its starting job.
+    setBuilderKey((k) => k + 1);
+  };
+
+  /** Load one department's job-brief starter into the builder. */
+  const loadDepartment = (dept: DepartmentStarter) => {
+    setDraft(dept.starter.job);
+    setInterviewFields(dept.starter);
+    setActiveDepartment(dept.id);
+    setActiveExample(null);
+    // Remount the builder so it picks up the starter fields.
     setBuilderKey((k) => k + 1);
   };
 
@@ -107,6 +139,67 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
         </Link>
       )}
 
+      {/* Departments — the bridge to the 137-job registry */}
+      <section aria-label="Departments">
+        <h2 className="mb-2.5 font-display text-[16px] font-bold text-cream">
+          Departments — the 137-job map
+        </h2>
+        <p className="mb-2.5 text-[12.5px] leading-snug text-sand">
+          The AI Agent Map&apos;s 7 departments, 137 agent jobs. Pick one and a real
+          job-brief starter for that department loads into the Forge above — a
+          forged brief (job, why, guardrails, done), not placeholder text. The
+          same job is also shown below as a SKILL.md: the merge is that the
+          137 jobs become skills for the one Oretha agent, grouped into 7
+          department folders — not 137 separate agents. The full registry
+          lives in the Oretha FDE RDP, inside the KEVO Virtual Office, with
+          Oretha as the one agent that talks to the department agents.
+        </p>
+        <div className="flex flex-col gap-2.5">
+          {DEPARTMENTS.map((dept) => (
+            <button
+              key={dept.id}
+              onClick={() => loadDepartment(dept)}
+              className={`rounded-[16px] border p-4 text-left transition active:scale-[0.99] ${
+                activeDepartment === dept.id
+                  ? "border-gold/50 bg-gold/10"
+                  : "border-white/8 bg-elevated"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[14px] font-semibold text-cream">{dept.name}</span>
+                <Chip tone="gold">{dept.jobs} jobs</Chip>
+              </div>
+              <p className="mt-1 text-[13px] leading-snug text-sand">{dept.tagline}</p>
+              <p className="mt-1.5 text-[12px] leading-snug text-clay">
+                Starter: {dept.starter.job}
+              </p>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 px-1 text-[12px] leading-snug text-clay">
+          22 Sales + 24 Deals + 23 Marketing + 19 Operations + 14 Customer +
+          18 Back Office + 17 Intelligence = 137 jobs. Each job is one
+          workflow with one approval gate — nothing that touches a client or
+          money moves without your yes.
+        </p>
+        {activeDept && (
+          <div className="mt-2.5 rounded-[16px] border border-gold/25 bg-elevated p-4">
+            <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-gold">
+              Department skill — SKILL.md
+            </p>
+            <pre className="whitespace-pre-wrap break-words font-mono text-[12.5px] leading-relaxed text-cream">
+              {buildSkillMarkdown(activeDept)}
+            </pre>
+            <div className="mt-3">
+              <Button variant="ghost" size="sm" onClick={copySkill}>
+                {skillCopied ? <Check size={16} /> : <Copy size={16} />}
+                {skillCopied ? "Skill copied" : "Copy skill"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* Real examples, audited scores */}
       <section aria-label="Real examples">
         <h2 className="mb-2.5 font-display text-[16px] font-bold text-cream">
@@ -140,15 +233,15 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
         </div>
       </section>
 
-      {/* Six lessons cheat sheet */}
-      <section aria-label="Six lessons">
+      {/* Lessons cheat sheet — six Anthropic lessons + Karpathy's seven */}
+      <section aria-label="Lessons">
         <button
           onClick={() => setLessonsOpen((o) => !o)}
           className="flex w-full items-center justify-between rounded-[16px] border border-white/8 bg-elevated p-4 text-left"
           aria-expanded={lessonsOpen}
         >
           <span className="font-display text-[16px] font-bold text-cream">
-            The six lessons — cheat sheet
+            The lessons — cheat sheet
           </span>
           <ChevronDown
             size={18}
@@ -163,6 +256,48 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
                 <p className="mt-1 text-[12.5px] leading-snug text-sand">{l.line}</p>
               </div>
             ))}
+            <div className="rounded-[16px] border border-gold/25 bg-elevated p-4">
+              <p className="text-[14px] font-semibold text-cream">{KARPATHY_LESSON.title}</p>
+              <p className="mt-1 text-[12.5px] leading-snug text-sand">{KARPATHY_LESSON.intro}</p>
+              <div className="mt-2.5 flex flex-col gap-2.5">
+                {KARPATHY_LESSON.principles.map((p, i) => (
+                  <div key={p.title}>
+                    <p className="text-[13px] font-semibold text-cream">
+                      {i + 1}. {p.title}
+                    </p>
+                    <p className="mt-0.5 text-[12.5px] leading-snug text-sand">{p.line}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[11.5px] leading-snug text-clay">
+                {KARPATHY_LESSON.sources}
+              </p>
+            </div>
+            <div className="rounded-[16px] border border-gold/25 bg-elevated p-4">
+              <p className="text-[14px] font-semibold text-cream">{SKILLS_LESSON.title}</p>
+              <p className="mt-1 text-[12.5px] leading-snug text-sand">{SKILLS_LESSON.intro}</p>
+              <p className="mt-2 text-[12.5px] leading-snug text-sand">{SKILLS_LESSON.analogy}</p>
+              <div className="mt-2.5 flex flex-col gap-2.5">
+                {SKILLS_LESSON.levels.map((lv) => (
+                  <div key={lv.level}>
+                    <p className="text-[13px] font-semibold text-cream">
+                      {lv.level} — {lv.title}
+                    </p>
+                    <p className="mt-0.5 text-[12.5px] leading-snug text-sand">{lv.line}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2.5 flex flex-col gap-1.5">
+                {SKILLS_LESSON.rules.map((r) => (
+                  <p key={r} className="text-[12.5px] leading-snug text-sand">
+                    • {r}
+                  </p>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[11.5px] leading-snug text-clay">
+                {SKILLS_LESSON.sources}
+              </p>
+            </div>
             <p className="px-1 text-[12px] leading-snug text-clay">
               From Anthropic&apos;s study of ~400,000 Claude Code sessions: beginners reach a
               verified result 15% of the time; experts 28–33%. Experts get ~3,200 words
