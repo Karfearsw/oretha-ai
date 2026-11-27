@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Check, Copy, Download, MessageSquareText, ClipboardCheck, Hammer, Send } from "lucide-react";
 import { SegmentedControl, type SegmentItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
+import { VoiceInput } from "@/components/forge/VoiceInput";
 import {
   scorePrompt,
   buildForged,
@@ -52,10 +53,13 @@ function Field({
 
 export function ForgeBuilder({
   initialDraft = "",
+  initialFields,
   onApply,
   onSendToChat,
 }: {
   initialDraft?: string;
+  /** Pre-fill the builder fields (e.g. from the interview flow). */
+  initialFields?: Partial<ForgeFields>;
   /** Chat Sheet mode: puts the forged text into the composer. */
   onApply?: (text: string) => void;
   /** Forge page mode: opens a new chat thread prefilled with the forged text. */
@@ -63,15 +67,16 @@ export function ForgeBuilder({
 }) {
   const [draft, setDraft] = useState(initialDraft);
   const [fields, setFields] = useState<ForgeFields>({
-    job: initialDraft,
-    why: "",
-    guardrails: "",
-    done: "",
-    role: "",
-    deadline: "",
+    job: initialFields?.job ?? initialDraft,
+    why: initialFields?.why ?? "",
+    guardrails: initialFields?.guardrails ?? "",
+    done: initialFields?.done ?? "",
+    role: initialFields?.role ?? "",
+    deadline: initialFields?.deadline ?? "",
   });
   const [mode, setMode] = useState<ForgeMode>("general");
   const [copied, setCopied] = useState(false);
+  const dictBaseRef = useRef("");
 
   const score = useMemo(() => scorePrompt(draft), [draft]);
   const forged = useMemo(() => buildForged(mode, fields), [mode, fields]);
@@ -122,6 +127,18 @@ export function ForgeBuilder({
           placeholder="Paste a rough prompt — or type it the way you'd normally say it…"
           className="w-full resize-none rounded-[18px] border border-white/10 bg-elevated p-4 text-[15px] leading-snug text-cream outline-none placeholder:text-clay focus:border-gold/50"
         />
+        <div>
+          <VoiceInput
+            label="Dictate a prompt"
+            onDictationStart={() => {
+              dictBaseRef.current = draft;
+            }}
+            onTranscript={(text) => {
+              const base = dictBaseRef.current.trim();
+              setDraft(base ? `${base} ${text}` : text);
+            }}
+          />
+        </div>
         <div className="flex items-center justify-between rounded-[16px] border border-white/8 bg-elevated px-4 py-3">
           <div>
             <p className="text-[12px] text-clay">Prompt score</p>

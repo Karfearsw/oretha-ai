@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Mic } from "lucide-react";
 import { ForgeBuilder } from "@/components/forge/ForgeBuilder";
+import { InterviewFlow } from "@/components/forge/InterviewFlow";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
-import { EXAMPLE_PROMPTS, SIX_LESSONS } from "@/lib/promptForge";
+import { EXAMPLE_PROMPTS, SIX_LESSONS, type ForgeFields } from "@/lib/promptForge";
 
 export default function ForgePage() {
   const router = useRouter();
@@ -14,12 +15,15 @@ export default function ForgePage() {
   const [builderKey, setBuilderKey] = useState(0);
   const [activeExample, setActiveExample] = useState<number | null>(null);
   const [lessonsOpen, setLessonsOpen] = useState(false);
+  const [interviewOpen, setInterviewOpen] = useState(false);
+  const [interviewFields, setInterviewFields] = useState<ForgeFields | null>(null);
   const [sending, setSending] = useState(false);
 
   const loadExample = (i: number) => {
     const ex = EXAMPLE_PROMPTS[i];
     setDraft(ex.text);
     setActiveExample(i);
+    setInterviewFields(null);
     // Remount the builder so it picks up the new draft as its starting job.
     setBuilderKey((k) => k + 1);
   };
@@ -51,9 +55,35 @@ export default function ForgePage() {
         </p>
       </header>
 
+      {/* Interview mode — answer by typing or by voice, hear each question. */}
+      <section aria-label="Interview me">
+        {interviewOpen ? (
+          <InterviewFlow
+            onComplete={(fields) => {
+              setInterviewFields(fields);
+              setDraft(fields.job);
+              setActiveExample(null);
+              setInterviewOpen(false);
+              // Remount the builder so it picks up the interview answers.
+              setBuilderKey((k) => k + 1);
+            }}
+          />
+        ) : (
+          <Button
+            variant="ghost"
+            size="lg"
+            onClick={() => setInterviewOpen(true)}
+            className="w-full border-gold/30"
+          >
+            <Mic size={16} /> Interview me — answer out loud, I&apos;ll write the prompt
+          </Button>
+        )}
+      </section>
+
       <ForgeBuilder
         key={builderKey}
         initialDraft={draft}
+        initialFields={interviewFields ?? undefined}
         onSendToChat={sendToChat}
       />
 
