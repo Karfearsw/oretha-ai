@@ -58,7 +58,7 @@ export default async function WelcomePage() {
         <div className="flex flex-col gap-2.5">
           <Link
             href="/forge"
-            className="block rounded-[16px] border border-white/12 bg-elevated p-4 transition active:scale-[0.99]"
+            className="glass-card block rounded-[16px] border border-white/12 bg-elevated p-4 transition active:scale-[0.99]"
           >
             <span className="block text-[15px] font-semibold text-cream">
               Prompt Forge
@@ -73,7 +73,7 @@ export default async function WelcomePage() {
           </Link>
           <Link
             href="/muse-dashboard"
-            className="block rounded-[16px] border border-white/12 bg-elevated p-4 transition active:scale-[0.99]"
+            className="glass-card block rounded-[16px] border border-white/12 bg-elevated p-4 transition active:scale-[0.99]"
           >
             <span className="block text-[15px] font-semibold text-cream">
               Muse Dashboard

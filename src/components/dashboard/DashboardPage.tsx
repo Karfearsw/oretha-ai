@@ -162,7 +162,7 @@ export function DashboardPage({ signedIn }: { signedIn: boolean }) {
           A preview of the layout, with example figures only. Your dashboard
           shows your real numbers — or leaves a cell blank until you have them.
         </p>
-        <div className="flex flex-col gap-3 rounded-[20px] border border-white/10 bg-elevated p-4">
+        <div className="glass-card flex flex-col gap-3 rounded-[20px] border border-white/10 bg-elevated p-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-clay">
               Today at a Glance · Example

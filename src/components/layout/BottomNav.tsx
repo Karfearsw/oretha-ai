@@ -18,7 +18,7 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[32rem] border-t border-white/8 bg-canvas/92 backdrop-blur-md"
+      className="glass-bar fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[32rem] border-t border-white/8"
       style={{ paddingBottom: "var(--safe-bottom)" }}
       aria-label="Primary"
     >

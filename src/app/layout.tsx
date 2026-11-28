@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { IOS_SPLASH_DEVICES, splashFile, splashFileLandscape, splashMedia } from "@/lib/iosDevices";
+import { GLASS_INIT_SCRIPT } from "@/lib/glass";
 import "./globals.css";
 
 const inter = Inter({
@@ -70,7 +71,12 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrains.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        {/* Liquid-glass preference, applied before first paint so a user
+            who turned glass off never sees a flash of frost. */}
+        <script dangerouslySetInnerHTML={{ __html: GLASS_INIT_SCRIPT }} />
+        {children}
+      </body>
     </html>
   );
 }

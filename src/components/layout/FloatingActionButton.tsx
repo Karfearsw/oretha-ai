@@ -52,7 +52,7 @@ export function FloatingActionButton() {
                 <Link
                   href={action.href}
                   onClick={() => setOpen(false)}
-                  className="flex items-center gap-3 rounded-full border border-white/10 bg-sheet py-2 pl-4 pr-2 shadow-lg shadow-black/50"
+                  className="glass flex items-center gap-3 rounded-full border border-white/10 py-2 pl-4 pr-2"
                 >
                   <span className="text-[14px] font-medium text-cream">
                     {action.label}

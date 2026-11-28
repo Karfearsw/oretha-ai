@@ -23,6 +23,7 @@ import {
 import { Sheet } from "@/components/ui/Sheet";
 import { FileSheet } from "@/components/ui/FileSheet";
 import { Toggle } from "@/components/ui/Toggle";
+import { applyGlassPreference, readGlassPreference } from "@/lib/glass";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { useSessionUser } from "@/components/layout/AppShell";
@@ -50,6 +51,12 @@ export default function ProfilePage() {
     (user?.censorship as "open" | "guarded" | "strict") ?? "open",
   );
   const [empowerment, setEmpowerment] = useState(user?.empowerment ?? true);
+
+  // Liquid glass appearance (client-side preference, like the Dash).
+  const [liquidGlass, setLiquidGlass] = useState(true);
+  useEffect(() => {
+    setLiquidGlass(readGlassPreference());
+  }, []);
 
   // BYOK LLM settings
   const [llm, setLlm] = useState<{
@@ -342,7 +349,7 @@ export default function ProfilePage() {
 
       <section
         aria-label="Ownership controls"
-        className="flex flex-col gap-3 rounded-[18px] border border-white/8 bg-elevated p-4"
+        className="glass-card flex flex-col gap-3 rounded-[18px] border border-white/8 bg-elevated p-4"
       >
         <h2 className="font-display text-[16px] font-bold text-cream">
           House rules
@@ -389,6 +396,27 @@ export default function ProfilePage() {
               patchSettings({ empowerment: v });
             }}
             label="Black empowerment mode"
+          />
+        </div>
+        <div className="h-px bg-white/6" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[14.5px] font-semibold text-cream">
+              Liquid glass
+            </p>
+            <p className="text-[12.5px] leading-snug text-clay">
+              {liquidGlass
+                ? "Frosted panels with a bright rim — on now."
+                : "Solid panels instead — same layout, calmer look."}
+            </p>
+          </div>
+          <Toggle
+            checked={liquidGlass}
+            onChange={(v) => {
+              setLiquidGlass(v);
+              applyGlassPreference(v);
+            }}
+            label="Liquid glass"
           />
         </div>
       </section>

@@ -228,3 +228,207 @@
     animation: none;
   }
 }
+
+/* ── Liquid glass ─────────────────────────────────────────────
+   Ported from the Muse Dash ("Liquid glass" section) and re-tinted
+   for Oretha's dark canvas: cream/gold specular rims instead of the
+   Dash's paper/ink. Same three tiers as the source:
+   - Tier 0: near-solid surface, legible everywhere (no backdrop-filter).
+   - Tier 1: frost (blur + saturate + brightness) with an asymmetric
+     specular rim — bright top edge, faint dark bottom edge — where
+     backdrop-filter parses.
+   - Tier 2 (real edge refraction, Chromium-only SVG displacement) is
+     NOT ported: it needs per-element JS measurement and buys nothing
+     on a dark canvas. Tier 1 is the glass.
+   Rules carried over: one glass layer per surface, never glass on
+   glass; content cards get near-opaque "thick glass" (no blur — over
+   flat canvas the blur has nothing to sample, and dozens of cards
+   each running backdrop-filter would be a rendering trap); the rim
+   and lift shadow carry the material on content surfaces. */
+
+/* Floating chrome: bottom nav bar, FAB action pills, dialogs. */
+.glass {
+  position: relative;
+  isolation: isolate;
+  background: rgba(19, 19, 22, 0.94);
+  border: 1px solid rgba(245, 242, 234, 0.1);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+.glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      240px 110px at var(--gx, 32%) var(--gy, -30%),
+      rgba(245, 242, 234, 0.14),
+      rgba(245, 242, 234, 0) 70%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(212, 162, 78, 0.16) 0%,
+      rgba(245, 242, 234, 0.05) 30%,
+      rgba(245, 242, 234, 0) 58%
+    );
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass {
+    background: rgba(26, 26, 30, 0.55);
+    border-color: rgba(245, 242, 234, 0.14);
+    -webkit-backdrop-filter: blur(14px) saturate(150%) brightness(1.08);
+    backdrop-filter: blur(14px) saturate(150%) brightness(1.08);
+    box-shadow:
+      0 10px 28px rgba(0, 0, 0, 0.45),
+      inset 0 1px 1px rgba(245, 242, 234, 0.16),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.35),
+      inset 1px 0 1px rgba(245, 242, 234, 0.06),
+      inset -1px 0 1px rgba(245, 242, 234, 0.06);
+  }
+  .glass-dialog {
+    background: rgba(26, 26, 30, 0.82);
+    -webkit-backdrop-filter: blur(18px) saturate(150%) brightness(1.02);
+    backdrop-filter: blur(18px) saturate(150%) brightness(1.02);
+  }
+  .glass-toast {
+    background: rgba(10, 10, 11, 0.85);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    backdrop-filter: blur(12px) saturate(150%);
+    box-shadow:
+      0 10px 28px rgba(0, 0, 0, 0.5),
+      inset 0 1px 1px rgba(245, 242, 234, 0.14),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.35);
+  }
+}
+.glass-dialog {
+  background: rgba(26, 26, 30, 0.97);
+}
+.glass-toast {
+  background: rgba(10, 10, 11, 0.96);
+}
+
+/* Sticky bars (bottom nav, chat header): same frost, no border of
+   their own — the component keeps its border-t / border-b classes.
+   No `position` here on purpose: both uses are already positioned
+   (fixed nav, sticky header), and `position: relative` would override
+   that. `isolation: isolate` alone gives the ::after its stacking
+   context. */
+.glass-bar {
+  isolation: isolate;
+  background: rgba(19, 19, 22, 0.92);
+}
+.glass-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(212, 162, 78, 0.1) 0%,
+    rgba(245, 242, 234, 0.04) 30%,
+    rgba(245, 242, 234, 0) 58%
+  );
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass-bar {
+    background: rgba(26, 26, 30, 0.55);
+    -webkit-backdrop-filter: blur(14px) saturate(150%) brightness(1.08);
+    backdrop-filter: blur(14px) saturate(150%) brightness(1.08);
+    box-shadow: inset 0 1px 1px rgba(245, 242, 234, 0.12);
+  }
+}
+
+/* Content surfaces get "thick glass": near-opaque so every number stays
+   readable, the material carried by the asymmetric rim and the lift
+   shadow instead of backdrop blur. */
+.glass-card {
+  background: linear-gradient(
+    180deg,
+    rgba(26, 26, 30, 0.96),
+    rgba(19, 19, 22, 0.92)
+  );
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.3),
+    inset 0 1px 1px rgba(245, 242, 234, 0.1),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.25),
+    inset 0 0 0 1px rgba(245, 242, 234, 0.05);
+}
+
+/* Gold-tinted thick glass, for the Lab's gold-accent cards: the same
+   near-opaque material with the gold fill kept under the rim. */
+.glass-card-gold {
+  background: linear-gradient(
+    180deg,
+    rgba(212, 162, 78, 0.16),
+    rgba(212, 162, 78, 0.07)
+  );
+}
+body.no-glass .glass,
+body.no-glass .glass-bar,
+body.no-glass .glass-dialog,
+body.no-glass .glass-toast {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+body.no-glass .glass {
+  background: rgba(19, 19, 22, 0.97);
+  border-color: rgba(245, 242, 234, 0.14);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+body.no-glass .glass-bar {
+  background: rgba(19, 19, 22, 0.97);
+  box-shadow: none;
+}
+body.no-glass .glass-dialog {
+  background: var(--color-sheet);
+}
+body.no-glass .glass-toast {
+  background: var(--color-canvas);
+  box-shadow: none;
+}
+body.no-glass .glass::after,
+body.no-glass .glass-bar::after {
+  display: none;
+}
+body.no-glass .glass-card,
+body.no-glass .glass-card-gold {
+  background: var(--color-elevated);
+  box-shadow: none;
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .glass,
+  .glass-bar,
+  .glass-dialog,
+  .glass-toast {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .glass {
+    background: rgba(19, 19, 22, 0.97) !important;
+    border-color: rgba(245, 242, 234, 0.3) !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35) !important;
+  }
+  .glass-bar {
+    background: rgba(19, 19, 22, 0.97) !important;
+    box-shadow: none !important;
+  }
+  .glass-dialog {
+    background: var(--color-sheet) !important;
+  }
+  .glass-toast {
+    background: var(--color-canvas) !important;
+    box-shadow: none !important;
+  }
+  .glass::after,
+  .glass-bar::after {
+    display: none;
+  }
+  .glass-card,
+  .glass-card-gold {
+    background: var(--color-elevated) !important;
+    box-shadow: none !important;
+  }
+}

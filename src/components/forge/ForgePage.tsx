@@ -101,7 +101,7 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
 
       {/* About you — four optional questions that tailor the Forge below. */}
       <section aria-label="About you">
-        <div className="rounded-[16px] border border-gold/25 bg-elevated p-4">
+        <div className="glass-card rounded-[16px] border border-gold/25 bg-elevated p-4">
           <p className="text-[14px] font-semibold text-cream">About you — optional</p>
           <p className="mt-0.5 text-[12.5px] leading-snug text-sand">
             Four quick answers and the Forge below shapes itself to your work —
@@ -213,7 +213,7 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
             <button
               key={dept.id}
               onClick={() => loadDepartment(dept)}
-              className={`rounded-[16px] border p-4 text-left transition active:scale-[0.99] ${
+              className={`glass-card rounded-[16px] border p-4 text-left transition active:scale-[0.99] ${
                 activeDepartment === dept.id
                   ? "border-gold/50 bg-gold/10"
                   : "border-white/8 bg-elevated"
@@ -264,7 +264,7 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
               <button
                 key={i}
                 onClick={() => loadExample(i)}
-                className={`rounded-[16px] border p-4 text-left transition active:scale-[0.99] ${
+                className={`glass-card rounded-[16px] border p-4 text-left transition active:scale-[0.99] ${
                   activeExample === i
                     ? "border-gold/50 bg-gold/10"
                     : "border-white/8 bg-elevated"
@@ -288,7 +288,7 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
       <section aria-label="Lessons">
         <button
           onClick={() => setLessonsOpen((o) => !o)}
-          className="flex w-full items-center justify-between rounded-[16px] border border-white/8 bg-elevated p-4 text-left"
+          className="glass-card flex w-full items-center justify-between rounded-[16px] border border-white/8 bg-elevated p-4 text-left"
           aria-expanded={lessonsOpen}
         >
           <span className="font-display text-[16px] font-bold text-cream">
@@ -302,7 +302,7 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
         {lessonsOpen && (
           <div className="mt-2 flex flex-col gap-2">
             {SIX_LESSONS.map((l) => (
-              <div key={l.title} className="rounded-[16px] border border-white/8 bg-elevated p-4">
+              <div key={l.title} className="glass-card rounded-[16px] border border-white/8 bg-elevated p-4">
                 <p className="text-[14px] font-semibold text-cream">{l.title}</p>
                 <p className="mt-1 text-[12.5px] leading-snug text-sand">{l.line}</p>
               </div>
