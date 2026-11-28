@@ -16,6 +16,9 @@ import { chatComplete } from "@/lib/llm";
 import { buildSystemMessages } from "@/lib/systemPrompt";
 import { syncAllMailboxes } from "@/lib/mailroom";
 import { syncAllConnectors } from "@/lib/connectors";
+import { humanMessageFor, toProviderError } from "@/lib/providerErrors";
+import { recordProviderFailure } from "@/lib/operatorAlert";
+import { normalizeRunStatus } from "@/lib/runStatus";
 
 const SCHEDULE_MS: Record<string, number> = {
   hourly: 3600_000,
@@ -51,8 +54,10 @@ async function runWorkflow(
     if (results.length === 0)
       return "No connectors linked — add GitHub or Linear in Settings → Connectors.";
     const created = results.reduce((n, r) => n + r.created, 0);
+    // Connector error detail stays in the server log — run history shows
+    // the connector name and that its sync failed, never a raw error body.
     const parts = results.map(
-      (r) => `${r.kind}${r.error ? ` (error: ${r.error})` : `: +${r.created}`}`,
+      (r) => `${r.kind}${r.error ? ` (sync error)` : `: +${r.created}`}`,
     );
     return `Connector sweep — ${created} new task${created === 1 ? "" : "s"}. ${parts.join(" · ")}`;
   }
@@ -91,8 +96,13 @@ export async function executeWorkflow(workflowId: string, userId: string) {
     select: { name: true, agentName: true },
   });
 
+  // One run-state model (R0.3): queued → running → succeeded | failed.
   const run = await prisma.workflowRun.create({
-    data: { workflowId: wf.id, status: "running" },
+    data: { workflowId: wf.id, status: "queued" },
+  });
+  await prisma.workflowRun.update({
+    where: { id: run.id },
+    data: { status: "running" },
   });
 
   try {
@@ -102,7 +112,7 @@ export async function executeWorkflow(workflowId: string, userId: string) {
     });
     const finished = await prisma.workflowRun.update({
       where: { id: run.id },
-      data: { status: "complete", summary },
+      data: { status: "succeeded", summary },
     });
     await prisma.workflow.update({
       where: { id: wf.id },
@@ -110,10 +120,12 @@ export async function executeWorkflow(workflowId: string, userId: string) {
     });
     return finished;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "workflow failed";
+    // Run history shows the human message only — never the raw error.
+    const mapped = toProviderError(err);
+    void recordProviderFailure(mapped, `workflow "${wf.name}"`);
     return prisma.workflowRun.update({
       where: { id: run.id },
-      data: { status: "failed", summary: message.slice(0, 600) },
+      data: { status: "failed", summary: humanMessageFor(mapped).slice(0, 600) },
     });
   }
 }
@@ -143,12 +155,12 @@ export async function sweepDueWorkflows(): Promise<SweepResult> {
       const run = await executeWorkflow(wf.id, wf.userId);
       results.results.push({
         workflow: wf.name,
-        status: run?.status ?? "failed",
+        status: normalizeRunStatus(run?.status),
       });
-    } catch (err) {
+    } catch {
       results.results.push({
         workflow: wf.name,
-        status: err instanceof Error ? err.message.slice(0, 80) : "failed",
+        status: "failed",
       });
     }
   }

@@ -11,6 +11,7 @@ import {
 } from "@/lib/llm";
 import { executeTool, parseToolArgs } from "@/lib/tools";
 import { scheduleMemoryUpdate } from "@/lib/memory";
+import { HUMAN_ERROR_MESSAGE } from "@/lib/providerErrors";
 
 const MAX_TOOL_TURNS = 3;
 
@@ -122,11 +123,9 @@ export async function POST(req: Request) {
       } catch (err) {
         console.error("[chat] stream failed:", err);
         if (!full) {
-          controller.enqueue(
-            encoder.encode(
-              "Something shorted out on my end — try that again.",
-            ),
-          );
+          // R0.2: one human message for every provider failure. The
+          // detail goes to the operator alert, never to this stream.
+          controller.enqueue(encoder.encode(HUMAN_ERROR_MESSAGE));
         }
       } finally {
         controller.close();

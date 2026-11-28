@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
+import { normalizeRunStatus } from "@/lib/runStatus";
 
 const ACTIONS = ["mail_triage", "connector_sync", "custom_prompt"] as const;
 const SCHEDULES = ["hourly", "daily", "weekly"] as const;
@@ -29,7 +30,7 @@ export async function GET() {
       enabled: w.enabled,
       lastRunAt: w.lastRunAt,
       lastRun: w.runs[0]
-        ? { status: w.runs[0].status, summary: w.runs[0].summary, at: w.runs[0].createdAt }
+        ? { status: normalizeRunStatus(w.runs[0].status), summary: w.runs[0].summary, at: w.runs[0].createdAt }
         : null,
     })),
   });

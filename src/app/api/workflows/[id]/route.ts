@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { executeWorkflow } from "@/lib/scheduler";
+import { normalizeRunStatus } from "@/lib/runStatus";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -49,6 +50,6 @@ export async function POST(_req: Request, ctx: Ctx) {
 
   const run = await executeWorkflow(id, user.id);
   return NextResponse.json({
-    run: { id: run.id, status: run.status, summary: run.summary },
+    run: { id: run.id, status: normalizeRunStatus(run.status), summary: run.summary },
   });
 }

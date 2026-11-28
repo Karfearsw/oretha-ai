@@ -13,6 +13,7 @@ import {
 } from "@/components/hub/WorkflowRunCard";
 import { useSessionUser } from "@/components/layout/AppShell";
 import type { PulseMetric } from "@/lib/types";
+import { isRunRunning } from "@/lib/runStatus";
 
 const FEATURES = [
   {
@@ -68,7 +69,7 @@ export default function HubPage() {
     };
   }, []);
 
-  const running = runs.filter((r) => r.status === "running").length;
+  const running = runs.filter((r) => isRunRunning(r.status)).length;
   const firstName = (user?.name ?? "").split(" ")[0];
 
   return (
