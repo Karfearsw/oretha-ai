@@ -51,6 +51,44 @@ export default async function WelcomePage() {
         </Link>
       </div>
 
+      <div className="w-full text-left">
+        <p className="mb-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-gold">
+          Free tools — no account needed
+        </p>
+        <div className="flex flex-col gap-2.5">
+          <Link
+            href="/forge"
+            className="block rounded-[16px] border border-white/12 bg-elevated p-4 transition active:scale-[0.99]"
+          >
+            <span className="block text-[15px] font-semibold text-cream">
+              Prompt Forge
+            </span>
+            <span className="mt-1 block text-[13px] leading-snug text-sand">
+              Score a rough ask on the 4-part brief, then forge it into a clean
+              prompt, a task, or a BMAD build.
+            </span>
+            <span className="mt-1.5 block text-[12.5px] font-semibold text-gold">
+              Try it free →
+            </span>
+          </Link>
+          <Link
+            href="/muse-dashboard"
+            className="block rounded-[16px] border border-white/12 bg-elevated p-4 transition active:scale-[0.99]"
+          >
+            <span className="block text-[15px] font-semibold text-cream">
+              Muse Dashboard
+            </span>
+            <span className="mt-1 block text-[13px] leading-snug text-sand">
+              Copy one prompt into your own Muse and it builds your personal
+              dashboard — pillars, today at a glance, scored routine, leads, desks.
+            </span>
+            <span className="mt-1.5 block text-[12.5px] font-semibold text-gold">
+              Try it free →
+            </span>
+          </Link>
+        </div>
+      </div>
+
       <p className="max-w-[260px] text-[11.5px] leading-relaxed text-clay">
         Uncensored by design. Your data stays yours — never sold, never used to
         train third parties.
