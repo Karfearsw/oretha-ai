@@ -8,7 +8,7 @@ import { ForgeBuilder } from "@/components/forge/ForgeBuilder";
 import { InterviewFlow } from "@/components/forge/InterviewFlow";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
-import { EXAMPLE_PROMPTS, SIX_LESSONS, KARPATHY_LESSON, SKILLS_LESSON, DEPARTMENTS, buildSkillMarkdown, type DepartmentStarter, type ForgeFields } from "@/lib/promptForge";
+import { EXAMPLE_PROMPTS, SIX_LESSONS, KARPATHY_LESSON, SKILLS_LESSON, PERSONAL_AGENT_LESSON, DEPARTMENTS, buildSkillMarkdown, type DepartmentStarter, type ForgeFields } from "@/lib/promptForge";
 
 /**
  * Prompt Forge page body — shared by the public /forge route (logged-out
@@ -233,7 +233,7 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
         </div>
       </section>
 
-      {/* Lessons cheat sheet — six Anthropic lessons + Karpathy's seven */}
+      {/* Lessons cheat sheet — six Anthropic lessons + Karpathy + skills + personal agent */}
       <section aria-label="Lessons">
         <button
           onClick={() => setLessonsOpen((o) => !o)}
@@ -296,6 +296,35 @@ export function ForgePage({ signedIn }: { signedIn: boolean }) {
               </div>
               <p className="mt-2.5 text-[11.5px] leading-snug text-clay">
                 {SKILLS_LESSON.sources}
+              </p>
+            </div>
+            <div className="rounded-[16px] border border-gold/25 bg-elevated p-4">
+              <p className="text-[14px] font-semibold text-cream">{PERSONAL_AGENT_LESSON.title}</p>
+              <p className="mt-1 text-[12.5px] leading-snug text-sand">{PERSONAL_AGENT_LESSON.intro}</p>
+              <div className="mt-2.5 flex flex-col gap-2.5">
+                {PERSONAL_AGENT_LESSON.act.map((a) => (
+                  <div key={a.letter}>
+                    <p className="text-[13px] font-semibold text-cream">
+                      {a.letter} — {a.title}
+                    </p>
+                    <p className="mt-0.5 text-[12.5px] leading-snug text-sand">{a.line}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[12.5px] leading-snug text-sand">
+                <span className="font-semibold text-cream">The rule: </span>
+                {PERSONAL_AGENT_LESSON.rule}
+              </p>
+              <div className="mt-2.5 flex flex-col gap-2.5">
+                {PERSONAL_AGENT_LESSON.forces.map((f) => (
+                  <div key={f.title}>
+                    <p className="text-[13px] font-semibold text-cream">{f.title}</p>
+                    <p className="mt-0.5 text-[12.5px] leading-snug text-sand">{f.line}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[11.5px] leading-snug text-clay">
+                {PERSONAL_AGENT_LESSON.sources}
               </p>
             </div>
             <p className="px-1 text-[12px] leading-snug text-clay">
