@@ -526,6 +526,70 @@ export const SKILLS_LESSON: {
 };
 
 /**
+ * Lesson 9 — one personal agent beats ten tools.
+ *
+ * Sandeep Swadia, "This ONE AI Agent Will Make You So Productive It's
+ * Almost Unfair" (Nov 4, 2026). The demos use ChatGPT's DOTS personal
+ * agent, but the principles apply to Claude, Gemini, Meta Muse, and Grok.
+ * One AI tool that knows you well beats ten that don't.
+ */
+export interface ProductivityForce {
+  title: string;
+  line: string;
+}
+
+export const PERSONAL_AGENT_LESSON: {
+  title: string;
+  intro: string;
+  act: { letter: string; title: string; line: string }[];
+  rule: string;
+  forces: ProductivityForce[];
+  sources: string;
+} = {
+  title: "9. One personal agent beats ten tools",
+  intro:
+    "Sandeep Swadia, “This ONE AI Agent Will Make You So Productive It's Almost Unfair” (Nov 4, 2026). Demos use ChatGPT's DOTS personal agent — the principles apply to Claude, Gemini, Meta Muse, and Grok. One AI tool that knows you well beats ten that don't: hiring a crowd of AI interns makes YOU their chief of staff.",
+  act: [
+    {
+      letter: "A",
+      title: "Autonomous",
+      line: "Give it a goal and it figures out how — it runs in the cloud, works with your other tools and apps, and can take actions on your behalf.",
+    },
+    {
+      letter: "C",
+      title: "Continuous",
+      line: "It keeps working after you close the tab, the chat, or the laptop — it orchestrates tasks for hours and comes back when done.",
+    },
+    {
+      letter: "T",
+      title: "Tailored",
+      line: "It remembers your goals, your preferences, and how you like things done — that memory is what makes one agent beat ten tools.",
+    },
+  ],
+  rule: "Let it manage, execute, and partner — but YOU make the final call. Otherwise it might post your bank statement on your Instagram story.",
+  forces: [
+    {
+      title: "1. Fragments",
+      line: "A 2022 Harvard Business Review study found Fortune 500 employees switched apps ~1,200 times a day, ~2 seconds each, ~40 minutes a day — and it damages attention, because you hunt for information before doing the work. The agent is the glue across your information islands: for interview prep it gathers your resume, notes, recruiter emails, and company research, then simulates the interview, challenges your weak answers, critiques, and repeats. McKinsey is testing AI agents that play clients in interviews.",
+    },
+    {
+      title: "2. Flood",
+      line: "A Microsoft 2025 survey of ~31,000 people found 117 emails and 153 Teams messages a day. The agent is a gatekeeper: check at 10am, 1pm, and 4pm, flag only the decisions waiting for you and the deadlines that changed, and give you a 5pm summary of the rest. It also simplifies dense material — lease clauses that could cost you money, and insurance terms most people can't define (a Carnegie Mellon study: only 14% of Americans with private insurance correctly defined four basic insurance terms). The risk: whoever filters decides what you see — check the work and keep refining it.",
+    },
+    {
+      title: "3. Frequency",
+      line: "Infrequent recurring tasks never become habits, so they fall through the cracks — his example is an iPhone trade-in with a 14-day return deadline, or a pulmonologist / sleep specialist every 3–4 months. The agent is the external trigger: it tracks the due dates and prompts you at the right time. Start with ONE irregular task.",
+    },
+    {
+      title: "4. Future",
+      line: "The first three steal hours; this one steals years. Randy Pausch's Last Lecture: people budget money carefully but rarely plan time. Write down three things you keep putting off, have the agent review your calendar every Sunday against your top three life priorities, report what you did toward them, and suggest changes for the coming week.",
+    },
+  ],
+  sources:
+    "Video: Sandeep Swadia, “This ONE AI Agent Will Make You So Productive It's Almost Unfair” (Nov 4, 2026) — youtube.com/watch?v=x9hrptrGGY0. Studies cited in the video: Harvard Business Review (2022, app-switching), Microsoft Work Trend Index (2025, ~31,000 surveyed), Carnegie Mellon (insurance literacy).",
+};
+
+/**
  * The 7 departments of the AI Agent Map (Nov 20, 2026) — 137 agent jobs in
  * total, each one job, one workflow, one approval gate. The full registry
  * lives in the Oretha FDE RDP v0.4, inside the KEVO Virtual Office, with
