@@ -10,50 +10,99 @@ import {
   stopSpeaking,
   speechSynthesisSupported,
 } from "@/lib/voice";
-import type { ForgeFields } from "@/lib/promptForge";
+import type { ForgeFields, VisitorProfile } from "@/lib/promptForge";
 
 interface Step {
-  key: keyof ForgeFields;
+  /** Profile steps come first and tailor the Forge; field steps build the brief. */
+  section: "profile" | "fields";
+  key: keyof VisitorProfile | keyof ForgeFields;
   question: string;
   hint: string;
   placeholder: string;
   optional?: boolean;
 }
 
-const STEPS: Step[] = [
+/**
+ * About you — four quick, optional questions up front. The answers tailor
+ * the Forge to the visitor (their work, their goal, their time-sink, how
+ * they work) and become the Context line of the forged prompt. All four
+ * are skippable; nothing is assumed about the visitor.
+ */
+const PROFILE_STEPS: Step[] = [
   {
+    section: "profile",
+    key: "work",
+    question: "What do you do? Your job, business, or role.",
+    hint: "So the examples and the prompt read like they're for you.",
+    placeholder: "e.g. I run a bakery / I'm a realtor / I'm a student…",
+    optional: true,
+  },
+  {
+    section: "profile",
+    key: "goal",
+    question: "What do you want the AI to do for you?",
+    hint: "The one job you'd hand off first.",
+    placeholder: "e.g. Write my social posts / Draft my invoices…",
+    optional: true,
+  },
+  {
+    section: "profile",
+    key: "timesink",
+    question: "What's your biggest time-sink?",
+    hint: "The chore that eats your week.",
+    placeholder: "e.g. Answering the same customer questions…",
+    optional: true,
+  },
+  {
+    section: "profile",
+    key: "style",
+    question: "How do you work best?",
+    hint: "Solo or with a team, mornings or nights, by voice or by typing.",
+    placeholder: "e.g. Solo, early mornings, by voice…",
+    optional: true,
+  },
+];
+
+const FIELD_STEPS: Step[] = [
+  {
+    section: "fields",
     key: "job",
     question: "What do you want the AI to do? Say the whole job in one sentence.",
     hint: "The whole task — not one step. Decide what gets done; let the AI figure out how.",
-    placeholder: "e.g. Build a one-page chart of BTC, ETH, gold and silver from Oct 19 to today…",
+    placeholder: "e.g. Draft a follow-up email for the clients who asked about pricing last week…",
   },
   {
+    section: "fields",
     key: "why",
     question: "Why do you want it? What will it let you do or decide?",
     hint: "The reason lets the AI make the small calls the way you would.",
-    placeholder: "e.g. So I can see which asset held up best while everything fell…",
+    placeholder: "e.g. So nobody waits more than a day for an answer…",
   },
   {
+    section: "fields",
     key: "guardrails",
     question: "What should it NOT do, touch, or invent?",
     hint: "Only the guardrails that really matter — with a reason if you have one.",
-    placeholder: "e.g. Don't invent prices — use real closes only…",
+    placeholder: "e.g. Don't invent prices or dates — use only the facts I give you…",
     optional: true,
   },
   {
+    section: "fields",
     key: "done",
     question: "How will you know it's done? Name one check it must pass.",
     hint: "If you never define done, the AI stops when it thinks it's done — which is a guess.",
-    placeholder: "e.g. Every line links to its source; the chart fits on one page…",
+    placeholder: "e.g. Every draft names the next step and who does it…",
   },
   {
+    section: "fields",
     key: "role",
     question: "Who should it act as? You can skip this one.",
-    hint: "A role helps on bigger jobs — a PM, a dev, a researcher.",
-    placeholder: "e.g. my PM agent",
+    hint: "A role helps on bigger jobs — an assistant, an editor, a researcher.",
+    placeholder: "e.g. my assistant",
     optional: true,
   },
   {
+    section: "fields",
     key: "deadline",
     question: "When is it due? You can skip this one too.",
     hint: "A deadline keeps a long job honest.",
@@ -62,15 +111,19 @@ const STEPS: Step[] = [
   },
 ];
 
+const STEPS: Step[] = [...PROFILE_STEPS, ...FIELD_STEPS];
+
 /**
- * "Interview me" flow: asks one question at a time until the four parts
- * of a strong brief are clear, then hands the filled fields to the builder.
- * Answers can be spoken (mic) and questions can be heard (speaker).
+ * "Interview me" flow: four About-you questions first (all skippable),
+ * then one question at a time until the four parts of a strong brief are
+ * clear. Hands the filled fields plus the visitor's profile to the
+ * builder. Answers can be spoken (mic) and questions can be heard
+ * (speaker).
  */
 export function InterviewFlow({
   onComplete,
 }: {
-  onComplete: (fields: ForgeFields) => void;
+  onComplete: (result: { fields: ForgeFields; profile: VisitorProfile }) => void;
 }) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<ForgeFields>({
@@ -81,6 +134,7 @@ export function InterviewFlow({
     role: "",
     deadline: "",
   });
+  const [profile, setProfile] = useState<VisitorProfile>({});
   const [autoRead, setAutoRead] = useState(true);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceURI, setVoiceURI] = useState<string | null>(null);
@@ -118,8 +172,13 @@ export function InterviewFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, autoRead]);
 
-  const setAnswer = (key: keyof ForgeFields) => (v: string) =>
-    setAnswers((a) => ({ ...a, [key]: v }));
+  const setAnswer = (key: string) => (v: string) => {
+    if (current.section === "profile") {
+      setProfile((p) => ({ ...p, [key]: v }));
+    } else {
+      setAnswers((a) => ({ ...a, [key]: v }));
+    }
+  };
 
   const readAloud = () => {
     if (!canSpeak) return;
@@ -134,10 +193,15 @@ export function InterviewFlow({
   };
 
   const isLast = step === STEPS.length - 1;
-  const value = answers[current.key] ?? "";
-  const canNext = current.optional || value.trim().length > 0;
+  const value =
+    current.section === "profile"
+      ? (profile[current.key as keyof VisitorProfile] ?? "")
+      : (answers[current.key as keyof ForgeFields] ?? "");
+  // About-you steps are all optional — always skippable. Field steps need
+  // an answer unless marked optional.
+  const canNext = current.section === "profile" || current.optional || value.trim().length > 0;
 
-  const finish = () => onComplete(answers);
+  const finish = () => onComplete({ fields: answers, profile });
 
   return (
     <div className="flex flex-col gap-3 rounded-[18px] border border-gold/30 bg-elevated p-4">
@@ -223,7 +287,7 @@ export function InterviewFlow({
         <VoiceInput
           label="Answer by voice"
           onDictationStart={() => {
-            dictBaseRef.current = answers[current.key] ?? "";
+            dictBaseRef.current = value;
           }}
           onTranscript={(text) => {
             const base = dictBaseRef.current.trim();

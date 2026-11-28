@@ -35,6 +35,61 @@ export interface ForgeFields {
   context?: string;
 }
 
+/**
+ * About-you profile — four quick, optional answers that tailor the Forge
+ * to the visitor (their work, their goal, their time-sink, how they work).
+ * Nothing personal to any one person: the profile is whatever the visitor
+ * types, and it never leaves their browser.
+ */
+export interface VisitorProfile {
+  /** What the visitor does — job, business, or role, in their own words. */
+  work?: string;
+  /** What they want the AI to do for them. */
+  goal?: string;
+  /** Their biggest time-sink. */
+  timesink?: string;
+  /** How they work best (solo, with a team, mornings, by voice…). */
+  style?: string;
+}
+
+/** Turn an About-you profile into the Context line of a forged brief. */
+export function buildProfileContext(p: VisitorProfile): string {
+  const bits: string[] = [];
+  if (p.work?.trim()) bits.push(`What I do: ${p.work.trim()}`);
+  if (p.goal?.trim()) bits.push(`What I want the AI to do for me: ${p.goal.trim()}`);
+  if (p.timesink?.trim()) bits.push(`Biggest time-sink: ${p.timesink.trim()}`);
+  if (p.style?.trim()) bits.push(`How I work best: ${p.style.trim()}`);
+  return bits.join(" ");
+}
+
+/**
+ * Placeholders for the builder fields, tailored from the visitor's profile
+ * where their own words fit naturally, generic otherwise. Never invents
+ * details about the visitor — it only echoes what they typed.
+ */
+export function profilePlaceholders(p: VisitorProfile): {
+  job: string;
+  why: string;
+  guardrails: string;
+  done: string;
+  role: string;
+} {
+  const goal = p.goal?.trim();
+  const sink = p.timesink?.trim();
+  return {
+    job: goal
+      ? `e.g. ${goal}…`
+      : "e.g. Draft a follow-up email for the clients who asked about pricing last week…",
+    why: sink
+      ? `e.g. So I stop losing hours to ${sink}…`
+      : "e.g. So nobody waits more than a day for an answer…",
+    guardrails:
+      "e.g. Don't invent prices or dates — use only the facts I give you…",
+    done: "e.g. Every draft names the next step and who does it…",
+    role: "e.g. my assistant, my editor, my researcher",
+  };
+}
+
 export const PART_LABELS: Record<ForgePart, string> = {
   job: "The job",
   why: "The why",
@@ -307,57 +362,56 @@ export function buildForged(mode: ForgeMode, f: ForgeFields): string {
   return buildGeneral(f);
 }
 
-/** The seven real prompts from the Nov 27, 2026 audit, with audited scores. */
+/**
+ * Seven made-up example prompts from different kinds of people — a shop
+ * owner, a student, a freelancer, a realtor, a teacher, a bare link, one
+ * word. None of them are real prompts from anyone; each one is written to
+ * teach one failure of the 4-part brief. Scores are NOT stored here — the
+ * page computes them live with scorePrompt, so the number shown is always
+ * the scorer's real verdict on the text.
+ */
 export interface ExamplePrompt {
   text: string;
-  /** Audited score from the research note — do not recompute or invent. */
-  score: number;
   label: string;
+  /** Who this example is for, and what it teaches. */
   why: string;
 }
 
 export const EXAMPLE_PROMPTS: ExamplePrompt[] = [
   {
-    text: "produce a chart for all four commodities and see when we started charting um when we started tracking them to their current value now.",
-    score: 2,
-    label: "Chart prompt",
-    why: "Job is fuzzy on the start date, no why, no guardrails, no done-check. It only worked because the assistant already knew tracking started Oct 19.",
+    text: "write an instagram post for my bakery's new sourdough loaf",
+    label: "Bakery post",
+    why: "A small shop owner. The job is roughly there, but no why, no guardrails, no done-check — the AI has to guess the tone, the price, and the call to action.",
   },
   {
-    text: "Use keys in different colors to build to distinguish which ones what?",
-    score: 2,
-    label: "Color keys",
-    why: "A fragmented correction prompt. The assistant had to guess 'keys' meant the chart legend.",
+    text: "help me study for my biology final next week",
+    label: "Study help",
+    why: "A college student. 'Help me study' could mean a quiz, a summary, or flashcards — and 'next week' gives no date. The AI picks one at random.",
   },
   {
-    text: "Those who recreate this and try to brand it with um OTP and Carfish KSW",
-    score: 2,
-    label: "Brand it",
-    why: "Voice garble ('Carfish' for Karfear) and no brand mark specified — KSW vs KSWBST — so the first version was wrong and needed a redo.",
+    text: "draft a reminder email for a client who hasn't paid their invoice in two weeks",
+    label: "Late invoice",
+    why: "A freelancer. The job is clear, but there's no tone (firm or friendly?), no invoice details, and no done-check — will it name the amount and the due date?",
   },
   {
-    text: "can we run it against my income in the past same time?",
-    score: 3,
-    label: "Income check",
-    why: "'Past same time' is ambiguous — the assistant inferred the 40-day window. No why, no done-check.",
+    text: "make a flyer for the open house on saturday at 12 oak street",
+    label: "Open house",
+    why: "A realtor. Saturday which date? What time? Which details sell the house? The job is one step — the flyer — with no why and no done-check.",
   },
   {
-    text: "If I invested what would be the best place of that cash instead of on daily living n shops n where did my income go",
-    score: 3,
-    label: "Invest instead",
-    why: "Two different jobs fused into one run-on sentence, no timeframe, no definition of 'best'.",
+    text: "plan a 45 minute lesson on fractions for my 4th graders",
+    label: "Lesson plan",
+    why: "A teacher. The time and topic are there, but no goal for the lesson, no guardrails on level, and no check for whether the plan actually fits in 45 minutes.",
   },
   {
-    text: "https://youtu.be/81Jg17dQz1A?is=eDhFYYVwAXV9HbDA",
-    score: 0,
+    text: "https://example.com/best-blenders-2026",
     label: "Bare link",
-    why: "A link with no text at all — no job, no why, no guardrails, no done. Works only on shared history.",
+    why: "A link with no text at all — no job, no why, no guardrails, no done. A link alone is not a prompt; say what to do with it.",
   },
   {
-    text: "Post",
-    score: 2,
+    text: "Logo",
     label: "One word",
-    why: "Which account? Which posts? It failed on @karfearbst because that account isn't linked — a done-check would have caught it up front.",
+    why: "One word. Which business? What style? What is it for? The AI has to guess everything — a done-check would have caught it up front.",
   },
 ];
 
@@ -590,24 +644,21 @@ export const PERSONAL_AGENT_LESSON: {
 };
 
 /**
- * The 7 departments of the AI Agent Map (Nov 20, 2026) — 137 agent jobs in
- * total, each one job, one workflow, one approval gate. The full registry
- * lives in the Oretha FDE RDP v0.4, inside the KEVO Virtual Office, with
- * Oretha as the one orchestrator agent talking to the department sub-agents.
- * Each department here loads one real job-brief starter into the builder —
- * a forged brief (Job / Why / Guardrails / Done), not placeholder text.
+ * Seven departments — a starter map for any small business, not a fixed
+ * registry. The names are a starting point: rename them to fit your
+ * business. Each department here loads one starter job-brief into the
+ * builder — a forged brief (Job / Why / Guardrails / Done), not
+ * placeholder text. The same job is also shown as a SKILL.md you can
+ * keep: one skill per department, grouped into folders, for one agent.
  */
 export interface DepartmentStarter {
   id: string;
   name: string;
-  /** Agent jobs in this department on the map. */
-  jobs: number;
   tagline: string;
   starter: ForgeFields;
   /**
-   * The same job as a SKILL.md. The merge: the 137 jobs become skills for
-   * the one Oretha agent, grouped into 7 department folders — not 137
-   * separate agents. The description is the trigger, written for the agent.
+   * The same job as a SKILL.md. The description is the trigger, written
+   * for the agent.
    */
   skill: {
     name: string;
@@ -645,7 +696,6 @@ export const DEPARTMENTS: DepartmentStarter[] = [
   {
     id: "sales",
     name: "Sales",
-    jobs: 22,
     tagline: "Finding leads, reading replies, booking calls.",
     starter: {
       role: "my Sales agent",
@@ -672,41 +722,39 @@ export const DEPARTMENTS: DepartmentStarter[] = [
   {
     id: "deals",
     name: "Deals",
-    jobs: 24,
-    tagline: "Comps, cash flow, deal memos.",
+    tagline: "Comparing options, writing decision memos.",
     starter: {
-      role: "my Deals agent (Booker)",
-      job: "Refresh the comps on one property and write a one-page deal memo: ARV from the three closest comparable sales, estimated repairs, cash flow at the asking price, and the highest offer that still leaves a margin.",
-      why: "So I can make an offer the same day I see a deal, with numbers I can defend instead of a guess.",
+      role: "my research assistant",
+      job: "Compare the two quotes I received and write a one-page memo: price, what each one covers, the risks, and which one I should pick.",
+      why: "So I can decide the same day with numbers I can defend instead of a guess.",
       guardrails:
-        "Use real comparable sales only — never invent a comp, an ARV, or a repair cost. If a number is missing, write “unknown” and say what would confirm it. Do not contact the seller.",
-      done: "A one-page memo with three real comps cited, ARV, repair estimate, cash flow, and a max offer — every number traceable to its source.",
+        "Use only the quotes I gave you — never invent a price, a term, or a deadline. If a number is missing, write “unknown” and say what would confirm it. Do not contact anyone on my behalf.",
+      done: "A one-page memo with both quotes cited, the trade-offs, and a clear recommendation — every number traceable to its source.",
     },
     skill: {
-      name: "deal-memo",
+      name: "decision-memo",
       description:
-        "Use when a property needs a yes/no: refresh the comps and write a one-page deal memo with ARV, repairs, cash flow, and a max offer.",
+        "Use when two options need a yes/no: compare the quotes and write a one-page memo with the trade-offs and a recommendation.",
       steps: [
-        "Pull the three closest comparable sales — same area, same bed/bath range, sold in the last six months.",
-        "Set the ARV from those three comps and cite each one.",
-        "Estimate repairs line by line; if a cost is unknown, write “unknown” and say what would confirm it.",
-        "Work out the cash flow at the asking price, then the highest offer that still leaves a margin.",
-        "Write the one-page memo: comps, ARV, repairs, cash flow, max offer.",
-        "Do not contact the seller. Do not invent a comp, an ARV, or a repair cost.",
+        "Take the two quotes I gave you — same job, same scope — and lay them side by side.",
+        "For each one, list the price, what it covers, and what it leaves out.",
+        "Note the risks of each: timing, quality, hidden costs.",
+        "Pick one and say why, in one sentence.",
+        "Write the one-page memo: quotes, trade-offs, recommendation.",
+        "Do not contact anyone on my behalf. Do not invent a price, a term, or a deadline.",
       ],
     },
   },
   {
     id: "marketing",
     name: "Marketing",
-    jobs: 23,
-    tagline: "Content, media, scheduled posts.",
+    tagline: "Posts, captions, and content that sounds like you.",
     starter: {
-      role: "my Marketing agent (Muse)",
-      job: "Draft today's post for @whoisotp from the facts I give you: one hook, one story, one call to action, in my voice. Keep it short enough to read in ten seconds.",
+      role: "my marketing helper",
+      job: "Draft today's post for my business from the facts I give you: one hook, one story, one call to action, in my voice. Keep it short enough to read in ten seconds.",
       why: "So I post every day without spending an hour staring at a blank caption.",
       guardrails:
-        "Use only facts I provided — never invent a price, a result, or a quote. Keep the trolling on @stackk10m, never on @whoisotp. Draft only — I approve the exact post before anything goes out.",
+        "Use only facts I provided — never invent a price, a result, or a quote. Draft only — I approve the exact post before anything goes out.",
       done: "One finished caption with hook, story, and call to action, plus three hashtag options. Nothing posted.",
     },
     skill: {
@@ -719,17 +767,16 @@ export const DEPARTMENTS: DepartmentStarter[] = [
         "Tell the story in my voice, short enough to read in ten seconds.",
         "End with one call to action — one thing, not three.",
         "Add three hashtag options.",
-        "Draft only. Keep the trolling on @stackk10m, never on @whoisotp. I approve the exact post before anything goes out.",
+        "Draft only. I approve the exact post before anything goes out.",
       ],
     },
   },
   {
     id: "operations",
     name: "Operations",
-    jobs: 19,
     tagline: "Onboarding, status updates, task board.",
     starter: {
-      role: "my Operations agent (Steward)",
+      role: "my operations assistant",
       job: "Build the new-client onboarding checklist for a client who just signed: the five setup steps in order, who does each one, and what “done” looks like for each step. Then draft the client a status update in plain language.",
       why: "So a new client is fully set up on day one instead of waiting a week while steps get forgotten.",
       guardrails:
@@ -752,7 +799,6 @@ export const DEPARTMENTS: DepartmentStarter[] = [
   {
     id: "customer",
     name: "Customer",
-    jobs: 14,
     tagline: "Support chat and triage.",
     starter: {
       role: "my Customer agent",
@@ -778,10 +824,9 @@ export const DEPARTMENTS: DepartmentStarter[] = [
   {
     id: "back-office",
     name: "Back Office",
-    jobs: 18,
     tagline: "Invoices, payment chasing, books.",
     starter: {
-      role: "my Back Office agent (Mailroom)",
+      role: "my back-office assistant",
       job: "Run the payment chaser on the overdue invoice list: Day 1 polite nudge, Day 7 firmer email with the invoice attached, Day 14 alert to me with the full history. Stop the moment a payment is marked received.",
       why: "So invoices get paid without me chasing people, and nobody gets chased after they already paid.",
       guardrails:
@@ -806,7 +851,6 @@ export const DEPARTMENTS: DepartmentStarter[] = [
   {
     id: "intelligence",
     name: "Intelligence",
-    jobs: 17,
     tagline: "The 7am brief and the yes/no panel.",
     starter: {
       role: "my Intelligence agent",

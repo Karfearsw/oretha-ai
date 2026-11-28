@@ -9,11 +9,14 @@ import { VoiceInput } from "@/components/forge/VoiceInput";
 import {
   scorePrompt,
   buildForged,
+  buildProfileContext,
+  profilePlaceholders,
   PART_LABELS,
   MODE_LABELS,
   type ForgeFields,
   type ForgeMode,
   type ForgePart,
+  type VisitorProfile,
 } from "@/lib/promptForge";
 
 const MODES: SegmentItem<ForgeMode>[] = [
@@ -54,12 +57,15 @@ function Field({
 export function ForgeBuilder({
   initialDraft = "",
   initialFields,
+  profile,
   onApply,
   onSendToChat,
 }: {
   initialDraft?: string;
   /** Pre-fill the builder fields (e.g. from the interview flow). */
   initialFields?: Partial<ForgeFields>;
+  /** About-you profile — tailors placeholders and the forged context. */
+  profile?: VisitorProfile;
   /** Chat Sheet mode: puts the forged text into the composer. */
   onApply?: (text: string) => void;
   /** Forge page mode: opens a new chat thread prefilled with the forged text. */
@@ -79,7 +85,15 @@ export function ForgeBuilder({
   const dictBaseRef = useRef("");
 
   const score = useMemo(() => scorePrompt(draft), [draft]);
-  const forged = useMemo(() => buildForged(mode, fields), [mode, fields]);
+  // The visitor's About-you answers become the Context line of the forged
+  // brief, so the output reads like it was written for them — not a
+  // template. Their own words only; nothing is invented about them.
+  const profileContext = buildProfileContext(profile ?? {});
+  const ph = profilePlaceholders(profile ?? {});
+  const forged = useMemo(
+    () => buildForged(mode, { ...fields, context: profileContext || fields.context }),
+    [mode, fields, profileContext],
+  );
   const canForge = fields.job.trim().length > 0;
 
   const setField = (key: keyof ForgeFields) => (v: string) =>
@@ -197,12 +211,12 @@ export function ForgeBuilder({
       {/* Builder */}
       <section aria-label="Forge the prompt" className="flex flex-col gap-2.5">
         <h2 className="font-display text-[16px] font-bold text-cream">Fill the gaps</h2>
-        <Field label="The job — the whole task, not one step" value={fields.job} onChange={setField("job")} rows={3} placeholder="e.g. Build a one-page chart of BTC, ETH, gold and silver from Oct 19 to today…" />
-        <Field label="The why — so it makes small calls your way" value={fields.why} onChange={setField("why")} placeholder="e.g. So I can see which asset held up best while everything fell…" />
-        <Field label="Guardrails — only the ones that matter" value={fields.guardrails} onChange={setField("guardrails")} placeholder="e.g. Don't invent prices — use real closes only…" />
-        <Field label="What done looks like — checks it must pass" value={fields.done} onChange={setField("done")} placeholder="e.g. Every line links to its source; the chart fits on one page…" />
+        <Field label="The job — the whole task, not one step" value={fields.job} onChange={setField("job")} rows={3} placeholder={ph.job} />
+        <Field label="The why — so it makes small calls your way" value={fields.why} onChange={setField("why")} placeholder={ph.why} />
+        <Field label="Guardrails — only the ones that matter" value={fields.guardrails} onChange={setField("guardrails")} placeholder={ph.guardrails} />
+        <Field label="What done looks like — checks it must pass" value={fields.done} onChange={setField("done")} placeholder={ph.done} />
         <div className="grid grid-cols-2 gap-2.5">
-          <Field label="Role (optional)" value={fields.role ?? ""} onChange={setField("role")} rows={1} placeholder="e.g. my PM agent" />
+          <Field label="Role (optional)" value={fields.role ?? ""} onChange={setField("role")} rows={1} placeholder={ph.role} />
           <Field label="Deadline (optional)" value={fields.deadline ?? ""} onChange={setField("deadline")} rows={1} placeholder="e.g. Friday" />
         </div>
       </section>
