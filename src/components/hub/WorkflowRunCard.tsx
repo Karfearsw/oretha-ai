@@ -37,7 +37,7 @@ export function WorkflowRunCard({ run }: { run: RunFeedItem }) {
   const failed = status === "failed";
 
   return (
-    <div className="overflow-hidden rounded-[16px] border border-white/8 bg-elevated">
+    <div className="glass-card overflow-hidden rounded-[16px] border border-white/8 bg-elevated">
       <button
         onClick={() => setExpanded((e) => !e)}
         className="flex w-full items-center gap-3 p-3.5 text-left transition active:bg-white/4"

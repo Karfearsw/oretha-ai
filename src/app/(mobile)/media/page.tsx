@@ -115,7 +115,7 @@ export default function MediaLabPage() {
       <section aria-label="Prompt Forge">
         <button
           onClick={() => router.push("/forge")}
-          className="flex w-full items-center gap-3.5 rounded-[16px] border border-gold/30 bg-gold/10 p-4 text-left transition active:scale-[0.98]"
+          className="glass-card glass-card-gold flex w-full items-center gap-3.5 rounded-[16px] border border-gold/30 bg-gold/10 p-4 text-left transition active:scale-[0.98]"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold">
             <OrethaIcon name="guides" size={18} tone="gold" />
@@ -133,7 +133,7 @@ export default function MediaLabPage() {
       <section aria-label="Muse Dashboard">
         <button
           onClick={() => router.push("/muse-dashboard")}
-          className="flex w-full items-center gap-3.5 rounded-[16px] border border-gold/30 bg-gold/10 p-4 text-left transition active:scale-[0.98]"
+          className="glass-card glass-card-gold flex w-full items-center gap-3.5 rounded-[16px] border border-gold/30 bg-gold/10 p-4 text-left transition active:scale-[0.98]"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold">
             <OrethaIcon name="board" size={18} tone="gold" />

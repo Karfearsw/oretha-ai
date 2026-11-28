@@ -153,7 +153,7 @@ export function ForgeBuilder({
             }}
           />
         </div>
-        <div className="flex items-center justify-between rounded-[16px] border border-white/8 bg-elevated px-4 py-3">
+        <div className="glass-card flex items-center justify-between rounded-[16px] border border-white/8 bg-elevated px-4 py-3">
           <div>
             <p className="text-[12px] text-clay">Prompt score</p>
             <p className="font-display text-[26px] font-bold leading-none text-cream">
@@ -171,7 +171,7 @@ export function ForgeBuilder({
                   : "Nothing to score yet"}
           </Chip>
         </div>
-        <div className="flex flex-col gap-2 rounded-[16px] border border-white/8 bg-elevated p-4">
+        <div className="glass-card flex flex-col gap-2 rounded-[16px] border border-white/8 bg-elevated p-4">
           {PART_ORDER.map((part) => {
             const p = score.parts[part];
             const pct = Math.round((p.score / 2.5) * 100);
@@ -224,7 +224,7 @@ export function ForgeBuilder({
       {/* Mode + output */}
       <section aria-label="Forged prompt" className="flex flex-col gap-2.5">
         <SegmentedControl items={MODES} value={mode} onChange={setMode} />
-        <div className="rounded-[16px] border border-gold/25 bg-elevated p-4">
+        <div className="glass-card rounded-[16px] border border-gold/25 bg-elevated p-4">
           <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-gold">
             {MODE_LABELS[mode]}
           </p>

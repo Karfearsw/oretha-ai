@@ -486,7 +486,7 @@ export default function ChatRoomPage() {
   return (
     <main className="flex min-h-dvh flex-col bg-canvas">
       {/* Header */}
-      <header className="pad-safe-top sticky top-0 z-20 bg-canvas/95 backdrop-blur-md">
+      <header className="glass-bar pad-safe-top sticky top-0 z-20">
         <div className="flex items-center justify-between px-4 pb-2 pt-2">
           <Link
             href="/chats"

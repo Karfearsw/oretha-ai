@@ -38,7 +38,7 @@ export function Sheet({
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 380, damping: 38 }}
             style={{ maxWidth }}
-            className="relative w-full rounded-t-[28px] border-t border-white/10 bg-sheet pb-safe-bottom-sheet"
+            className="glass glass-dialog relative w-full rounded-t-[28px] border-t border-white/10 pb-safe-bottom-sheet"
           >
             <div className="flex items-center justify-center pt-3">
               <span className="h-1.5 w-10 rounded-full bg-white/15" />
