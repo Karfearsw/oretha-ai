@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
+import { normalizeRunStatus } from "@/lib/runStatus";
 
 /* GET /api/runs/recent — the user's latest workflow runs (running first). */
 export async function GET() {
@@ -19,7 +20,7 @@ export async function GET() {
       id: r.id,
       workflow: r.workflow.name,
       action: r.workflow.action,
-      status: r.status,
+      status: normalizeRunStatus(r.status),
       summary: r.summary,
       at: r.createdAt,
     })),

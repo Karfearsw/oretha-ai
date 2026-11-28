@@ -39,6 +39,7 @@ import { AgentRunRow } from "@/components/hub/AgentRunRow";
 import { OrethaMark } from "@/components/ui/OrethaMark";
 import { Chip } from "@/components/ui/Chip";
 import { generateAgentFiles } from "@/lib/agentFiles";
+import { HUMAN_ERROR_MESSAGE } from "@/lib/providerErrors";
 import { useSessionUser } from "@/components/layout/AppShell";
 import type { ChatMessage } from "@/lib/types";
 
@@ -294,9 +295,10 @@ export default function ChatRoomPage() {
     })
       .then(async (res) => {
         if (res.status === 503) {
-          setStreaming(
-            "My voice isn't wired up yet — add LLM_API_KEY on the server and I'll answer for real. Everything else is ready.",
-          );
+          // R0.2: one human message for every provider failure — server
+          // config detail stays out of the chat. Diagnosis lives in
+          // /api/llm-status and the operator alert.
+          setStreaming(HUMAN_ERROR_MESSAGE);
           return;
         }
         if (res.status === 404) {
@@ -304,7 +306,7 @@ export default function ChatRoomPage() {
           return;
         }
         if (!res.ok || !res.body) {
-          setStreaming("Something shorted out on my end — try that again.");
+          setStreaming(HUMAN_ERROR_MESSAGE);
           return;
         }
         const reader = res.body.getReader();
@@ -317,7 +319,7 @@ export default function ChatRoomPage() {
           setStreaming(acc);
         }
         if (!acc.trim()) {
-          setStreaming("Something shorted out on my end — try that again.");
+          setStreaming(HUMAN_ERROR_MESSAGE);
         }
       })
       .catch((err) => {

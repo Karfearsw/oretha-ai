@@ -199,3 +199,14 @@ model Connector {
 
   @@unique([userId, kind])
 }
+
+/* ── Operator alert cooldown (Epic 0 / R0.4) ─────────────────────────
+ * One row per alert code, recording the last time the operator was
+ * paged. In-memory cooldowns do not dedupe across Next.js route
+ * bundles (each route carries its own module instance), so the
+ * cooldown lives here — otherwise one billing outage pages the
+ * operator once per call site instead of once. */
+model AlertCooldown {
+  code       String   @id
+  lastSentAt DateTime
+}

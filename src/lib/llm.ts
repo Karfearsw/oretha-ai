@@ -24,6 +24,8 @@ import {
   type ProviderConfig,
 } from "@/lib/llmTypes";
 import { userProviderConfig } from "@/lib/userLlm";
+import { mapProviderError, toProviderError } from "@/lib/providerErrors";
+import { recordProviderFailure } from "@/lib/operatorAlert";
 
 export type { ProviderConfig } from "@/lib/llmTypes";
 export { PROVIDER_DEFAULTS, PROVIDER_NAMES } from "@/lib/llmTypes";
@@ -80,6 +82,11 @@ function chain(): ProviderConfig[] {
 /** Env-only chain (no user key) — for status reporting. */
 function envChain(): ProviderConfig[] {
   return chain();
+}
+
+/** Server-side (env) provider configs — for billing health probes. No user key. */
+export function envProviderConfigs(): ProviderConfig[] {
+  return envChain();
 }
 
 /**
@@ -399,22 +406,28 @@ export async function* streamChatWithTools(
         CONNECT_TIMEOUT_MS,
       );
     } catch (err) {
-      lastError = err;
+      const mapped = toProviderError(err, cfg.provider);
+      lastError = mapped;
       console.error(
-        `[llm] provider ${i} (${cfg.provider}/${cfg.model}) unreachable:`,
-        err instanceof Error ? err.message : err,
+        `[llm] provider ${i} (${cfg.provider}/${cfg.model}) unreachable (${mapped.code})`,
       );
       continue; // failover
     }
 
     if (!res.ok) {
-      lastError = new Error(
-        `${cfg.provider} ${res.status}: ${await safeErrorText(res)}`,
+      const mapped = mapProviderError(
+        cfg.provider,
+        res.status,
+        await safeErrorText(res),
       );
+      lastError = mapped;
       console.error(
-        `[llm] provider ${i} (${cfg.provider}/${cfg.model}) failed → trying next` +
+        `[llm] provider ${i} (${cfg.provider}/${cfg.model}) failed: HTTP ${res.status} (${mapped.code}) → trying next` +
           (i < providers.length - 1 ? "" : " (none left)"),
       );
+      if (mapped.code === "billing" || mapped.code === "rate_limited") {
+        void recordProviderFailure(mapped, "chat stream");
+      }
       continue; // failover
     }
 
@@ -424,7 +437,7 @@ export async function* streamChatWithTools(
     return;
   }
 
-  throw lastError ?? new Error("LLM_UNAVAILABLE");
+  throw lastError ?? toProviderError(new Error("LLM_UNAVAILABLE"));
 }
 
 /** Text-only convenience wrapper over streamChatWithTools. */
@@ -460,9 +473,16 @@ export async function chatComplete(
         CONNECT_TIMEOUT_MS,
       );
       if (!res.ok) {
-        lastError = new Error(
-          `${cfg.provider} ${res.status}: ${await safeErrorText(res)}`,
+        const mapped = mapProviderError(
+          cfg.provider,
+          res.status,
+          await safeErrorText(res),
         );
+        lastError = mapped;
+        // No alert here: the caller owns alerting (the scheduler catch
+        // pages the operator for workflow runs; streamChatWithTools
+        // pages for chat). Alerting from every layer pages once per
+        // call site for a single failure.
         continue;
       }
 
@@ -481,11 +501,12 @@ export async function chatComplete(
       };
       return (json.choices?.[0]?.message?.content ?? "").trim();
     } catch (err) {
-      lastError = err;
+      const mapped = toProviderError(err, cfg.provider);
+      lastError = mapped;
       console.error(
-        `[llm] background call via ${cfg.provider}/${cfg.model} failed → trying next`,
+        `[llm] background call via ${cfg.provider}/${cfg.model} failed (${mapped.code}) → trying next`,
       );
     }
   }
-  throw lastError ?? new Error("LLM_UNAVAILABLE");
+  throw lastError ?? toProviderError(new Error("LLM_UNAVAILABLE"));
 }

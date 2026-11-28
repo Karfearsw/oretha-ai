@@ -5,9 +5,11 @@ import {
   XCircle,
   Loader2,
   ChevronDown,
+  CircleDashed,
   Mail,
   Sparkles,
 } from "lucide-react";
+import { normalizeRunStatus, runStatusLabel } from "@/lib/runStatus";
 
 export interface RunFeedItem {
   id: string;
@@ -29,7 +31,10 @@ function timeAgo(iso: string): string {
 
 export function WorkflowRunCard({ run }: { run: RunFeedItem }) {
   const [expanded, setExpanded] = useState(false);
-  const running = run.status === "running";
+  // One run-state model (R0.3): queued / running / succeeded / failed.
+  const status = normalizeRunStatus(run.status);
+  const running = status === "running";
+  const failed = status === "failed";
 
   return (
     <div className="overflow-hidden rounded-[16px] border border-white/8 bg-elevated">
@@ -52,12 +57,14 @@ export function WorkflowRunCard({ run }: { run: RunFeedItem }) {
           <span className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-sand">
             {running ? (
               <Loader2 size={12} className="animate-spin text-gold" />
-            ) : run.status === "failed" ? (
+            ) : failed ? (
               <XCircle size={12} className="text-alert" />
+            ) : status === "queued" ? (
+              <CircleDashed size={12} className="text-clay" />
             ) : (
               <CheckCircle2 size={12} className="text-complete" />
             )}
-            {running ? "is working" : run.status === "failed" ? "failed" : "finished"} ·{" "}
+            {running ? "is working" : runStatusLabel(status)} ·{" "}
             {timeAgo(run.at)}
           </span>
         </span>

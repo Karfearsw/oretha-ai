@@ -18,6 +18,7 @@ import { OfficeSubTabs } from "@/components/office/OfficeSubTabs";
 import { AgentAvatar } from "@/components/ui/Avatar";
 import { Chip } from "@/components/ui/Chip";
 import { EMPLOYEES } from "@/lib/mock/office";
+import { isRunFailed, isRunRunning, normalizeRunStatus } from "@/lib/runStatus";
 
 interface Alert {
   icon: typeof Mail;
@@ -58,28 +59,29 @@ export default function OfficeHomePage() {
         if (r.ok) {
           const d = await r.json();
           for (const run of (d.runs ?? []).slice(0, 3)) {
+            const status = normalizeRunStatus(run.status);
             alerts.push({
               icon:
-                run.status === "failed"
+                isRunFailed(run.status)
                   ? AlertTriangle
                   : run.action === "mail_triage"
                     ? Inbox
                     : CircleDot,
               text:
-                run.status === "failed"
+                isRunFailed(run.status)
                   ? `Workflow "${run.workflow}" failed — check it`
                   : run.summary
                     ? `${run.workflow}: ${run.summary.slice(0, 70)}`
-                    : `${run.workflow} ${run.status === "running" ? "is running" : "finished"}`,
+                    : `${run.workflow} ${status === "running" ? "is running" : "finished"}`,
               time: timeAgo(run.at),
               href: "/workflows",
-              tone: run.status === "failed" ? "alert" : run.status === "running" ? "gold" : "violet",
+              tone: isRunFailed(run.status) ? "alert" : status === "running" ? "gold" : "violet",
             });
           }
           if (alive) {
             setStats((s) => ({
               ...s,
-              running: (d.runs ?? []).filter((x: { status: string }) => x.status === "running").length,
+              running: (d.runs ?? []).filter((x: { status: string }) => isRunRunning(x.status)).length,
               lastSweep: d.runs?.[0]?.at ?? null,
             }));
           }

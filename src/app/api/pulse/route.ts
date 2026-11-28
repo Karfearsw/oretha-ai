@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { chatComplete } from "@/lib/llm";
+import { isRunFailed } from "@/lib/runStatus";
 
 function dayKey(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -121,7 +122,7 @@ export async function GET() {
     const activity = [
       `messages sent (14d): ${metrics[0].value}`,
       `tasks created (14d): ${tasks.length} (${completedTasks} done)`,
-      `automation runs (14d): ${runs.length} (${runs.filter((r) => r.status === "failed").length} failed)`,
+      `automation runs (14d): ${runs.length} (${runs.filter((r) => isRunFailed(r.status)).length} failed)`,
       `emails triaged (14d): ${emails.length} (${emails.filter((e) => e.action === "task").length} became tasks)`,
     ].join("\n");
     const raw = await chatComplete(
@@ -155,6 +156,6 @@ export async function GET() {
     trendDelta: weekDelta(totalDaily),
     notes,
     completedTasks,
-    failedRuns: runs.filter((r) => r.status === "failed").length,
+    failedRuns: runs.filter((r) => isRunFailed(r.status)).length,
   });
 }

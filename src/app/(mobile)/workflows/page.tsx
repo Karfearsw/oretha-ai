@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Sheet } from "@/components/ui/Sheet";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
+import { normalizeRunStatus } from "@/lib/runStatus";
 
 interface WorkflowRow {
   id: string;
@@ -132,7 +133,7 @@ export default function WorkflowsPage() {
       const data = await res.json().catch(() => null);
       if (res.ok) {
         setNotice(
-          data.run?.status === "complete"
+          normalizeRunStatus(data.run?.status) === "succeeded"
             ? data.run.summary
             : (data.run?.summary ?? "Run finished"),
         );
@@ -242,9 +243,9 @@ export default function WorkflowsPage() {
 
               {wf.lastRun && (
                 <p className="flex items-start gap-1.5 text-[12px] leading-snug text-clay">
-                  {wf.lastRun.status === "complete" ? (
+                  {normalizeRunStatus(wf.lastRun.status) === "succeeded" ? (
                     <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-complete" />
-                  ) : wf.lastRun.status === "failed" ? (
+                  ) : normalizeRunStatus(wf.lastRun.status) === "failed" ? (
                     <XCircle size={13} className="mt-0.5 shrink-0 text-alert" />
                   ) : (
                     <Loader2 size={13} className="mt-0.5 shrink-0 animate-spin text-gold" />
@@ -296,9 +297,9 @@ export default function WorkflowsPage() {
                 key={r.id}
                 className="flex items-start gap-2.5 rounded-[14px] border border-white/8 bg-elevated px-3.5 py-3"
               >
-                {r.status === "complete" ? (
+                {normalizeRunStatus(r.status) === "succeeded" ? (
                   <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-complete" />
-                ) : r.status === "failed" ? (
+                ) : normalizeRunStatus(r.status) === "failed" ? (
                   <XCircle size={15} className="mt-0.5 shrink-0 text-alert" />
                 ) : (
                   <Loader2 size={15} className="mt-0.5 shrink-0 animate-spin text-gold" />
