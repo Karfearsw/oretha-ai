@@ -130,6 +130,24 @@ export default function MediaLabPage() {
         </button>
       </section>
 
+      <section aria-label="Muse Dashboard">
+        <button
+          onClick={() => router.push("/muse-dashboard")}
+          className="flex w-full items-center gap-3.5 rounded-[16px] border border-gold/30 bg-gold/10 p-4 text-left transition active:scale-[0.98]"
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold">
+            <OrethaIcon name="board" size={18} tone="gold" />
+          </span>
+          <span className="flex-1">
+            <span className="block text-[14.5px] font-semibold text-cream">Muse Dashboard</span>
+            <span className="block text-[12px] leading-snug text-sand">
+              Copy one prompt into your own Muse and it builds your personal dashboard — pillars, today at a glance, scored routine, leads, desks. Free — no account needed.
+            </span>
+          </span>
+          <span className="text-[12px] font-semibold text-gold">Open →</span>
+        </button>
+      </section>
+
       <section aria-label="Creative agents">
         <h2 className="mb-2.5 font-display text-[16px] font-bold text-cream">
           Creative crew
