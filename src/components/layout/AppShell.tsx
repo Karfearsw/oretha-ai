@@ -30,7 +30,7 @@ export function AppShell({
   if (hidden) {
     return (
       <UserContext.Provider value={user}>
-        <div className="mx-auto flex min-h-dvh max-w-[32rem] flex-col bg-canvas">
+        <div className="relative mx-auto flex min-h-dvh max-w-[32rem] flex-col">
           {children}
         </div>
       </UserContext.Provider>
@@ -39,7 +39,7 @@ export function AppShell({
 
   return (
     <UserContext.Provider value={user}>
-      <div className="mx-auto flex min-h-dvh max-w-[32rem] flex-col bg-canvas">
+      <div className="relative mx-auto flex min-h-dvh max-w-[32rem] flex-col">
         <div className="pad-safe-bottom-nav">{children}</div>
         <BottomNav />
         <FloatingActionButton />

@@ -69,7 +69,7 @@ export default function MediaLabPage() {
       <SegmentedControl items={MODES} value={mode} onChange={setMode} />
 
       <section aria-label="Workspace canvas" className="flex flex-col gap-3">
-        <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-[20px] border border-white/10 bg-elevated">
+        <div className="glass-card relative flex aspect-square items-center justify-center overflow-hidden rounded-[20px] border border-white/10">
           <AnimatePresence mode="wait">
             <motion.div
               key={mode}

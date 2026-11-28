@@ -48,7 +48,7 @@ export default function GuideDetailPage() {
         {guide.steps.map((step, i) => (
           <div
             key={step.title}
-            className="rounded-[18px] border border-white/8 bg-elevated p-4"
+            className="glass-card rounded-[18px] border border-white/8 p-4"
           >
             <div className="flex items-center gap-2.5">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-gold to-violet font-display text-[13px] font-bold text-canvas">

@@ -30,7 +30,7 @@ export default async function ForgeLayout({
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-[32rem] flex-col bg-canvas">
+    <div className="relative mx-auto flex min-h-dvh max-w-[32rem] flex-col">
       <header className="flex items-center justify-between px-4 pb-3 pad-safe-top">
         <Link href="/welcome" className="flex items-center gap-2">
           <OrethaMark size={32} />

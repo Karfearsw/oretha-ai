@@ -27,7 +27,7 @@ export default function BootScreen() {
   }, [router]);
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center bg-canvas">
+    <main className="relative flex min-h-dvh flex-col items-center justify-center">
       <div className="flex flex-col items-center gap-10">
         <div className="relative flex items-center justify-center">
           <OrethaMark size={104} />

@@ -484,7 +484,7 @@ export default function ChatRoomPage() {
     "";
 
   return (
-    <main className="flex min-h-dvh flex-col bg-canvas">
+    <main className="relative flex min-h-dvh flex-col">
       {/* Header */}
       <header className="glass-bar pad-safe-top sticky top-0 z-20">
         <div className="flex items-center justify-between px-4 pb-2 pt-2">
@@ -596,7 +596,7 @@ export default function ChatRoomPage() {
                 <button
                   key={f}
                   onClick={() => setFileOpen(f)}
-                  className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-elevated p-4 text-left transition active:scale-[0.98]"
+                  className="glass-card flex items-center gap-3 rounded-[16px] border border-white/8 p-4 text-left transition active:scale-[0.98]"
                 >
                   <span className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-violet/20 text-[#c4b5fd]">
                     <FileText size={18} />
@@ -938,7 +938,7 @@ function GuardrailCard({
   tone: "gold" | "violet" | "complete";
 }) {
   return (
-    <div className="rounded-[16px] border border-white/8 bg-elevated p-4">
+    <div className="glass-card rounded-[16px] border border-white/8 p-4">
       <div className="flex items-center justify-between">
         <p className="font-display text-[15px] font-bold text-cream">{title}</p>
         <Chip tone={tone}>{chip}</Chip>
