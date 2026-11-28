@@ -224,7 +224,8 @@
   .anim-spin-ring,
   .anim-grad-pan,
   .anim-text-rotate,
-  .anim-typing span {
+  .anim-typing span,
+  .glass-field i {
     animation: none;
   }
 }
@@ -244,7 +245,77 @@
    glass; content cards get near-opaque "thick glass" (no blur — over
    flat canvas the blur has nothing to sample, and dozens of cards
    each running backdrop-filter would be a rendering trap); the rim
-   and lift shadow carry the material on content surfaces. */
+   and lift shadow carry the material on content surfaces.
+   ── v0.2 (glass-everywhere): that "no blur" call was the bug. On the
+   live site the thick cards read as flat solid — a 0.96-alpha dark
+   card over a flat #0a0a0b canvas is indistinguishable from solid,
+   and the rim is too faint to carry the material alone. Two changes:
+   (1) a slowly drifting gradient field lives behind ALL content, so
+   frost has something to show through; (2) .glass-card is real
+   frosted glass now (translucent + blur 14px + stronger rim), with
+   the field dimmed enough that text never fights it. */
+
+/* Drifting gradient field — lives behind all app content, mounted
+   once in the root layout (<div class="glass-field">, first child of
+   <body>). Static layered radial gradients in the brand accents
+   (gold #d4a24e, violet #7c3aed, theme tokens) + two large soft blobs
+   that drift on transform only (compositor-cheap, no layout thrash).
+   The shell wrappers (AppShell, forge/dashboard/auth layouts, chat
+   thread, boot) are transparent + positioned, so the field shows
+   through; html already paints the flat canvas colour behind it.
+   Hidden entirely when glass is off (body.no-glass) or the system
+   asks for reduced transparency; frozen static when the system asks
+   for reduced motion. */
+.glass-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(58% 42% at 16% -4%, rgba(212, 162, 78, 0.16), rgba(212, 162, 78, 0) 70%),
+    radial-gradient(52% 38% at 88% 6%, rgba(124, 58, 237, 0.2), rgba(124, 58, 237, 0) 70%),
+    radial-gradient(70% 50% at 50% 112%, rgba(124, 58, 237, 0.12), rgba(124, 58, 237, 0) 70%),
+    radial-gradient(38% 28% at 78% 68%, rgba(212, 162, 78, 0.08), rgba(212, 162, 78, 0) 70%);
+}
+.glass-field i {
+  position: absolute;
+  display: block;
+  border-radius: 9999px;
+  filter: blur(40px);
+}
+.glass-field i:first-child {
+  width: 70vmax;
+  height: 70vmax;
+  left: -25vmax;
+  top: -18vmax;
+  background: radial-gradient(circle, rgba(212, 162, 78, 0.2), rgba(212, 162, 78, 0) 65%);
+  animation: glass-drift-a 72s ease-in-out infinite alternate;
+}
+.glass-field i:last-child {
+  width: 62vmax;
+  height: 62vmax;
+  right: -22vmax;
+  top: 22%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.24), rgba(124, 58, 237, 0) 65%);
+  animation: glass-drift-b 96s ease-in-out infinite alternate;
+}
+@keyframes glass-drift-a {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(12vmax, 9vh, 0) scale(1.12);
+  }
+}
+@keyframes glass-drift-b {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  to {
+    transform: translate3d(-10vmax, -8vh, 0) scale(0.94);
+  }
+}
 
 /* Floating chrome: bottom nav bar, FAB action pills, dialogs. */
 .glass {
@@ -291,6 +362,14 @@
     background: rgba(26, 26, 30, 0.82);
     -webkit-backdrop-filter: blur(18px) saturate(150%) brightness(1.02);
     backdrop-filter: blur(18px) saturate(150%) brightness(1.02);
+  }
+  .glass-card {
+    -webkit-backdrop-filter: blur(14px) saturate(150%) brightness(1.06);
+    backdrop-filter: blur(14px) saturate(150%) brightness(1.06);
+  }
+  .glass-card-gold {
+    -webkit-backdrop-filter: blur(14px) saturate(150%) brightness(1.05);
+    backdrop-filter: blur(14px) saturate(150%) brightness(1.05);
   }
   .glass-toast {
     background: rgba(10, 10, 11, 0.85);
@@ -341,30 +420,62 @@
   }
 }
 
-/* Content surfaces get "thick glass": near-opaque so every number stays
-   readable, the material carried by the asymmetric rim and the lift
-   shadow instead of backdrop blur. */
+/* Content surfaces get real frosted glass (v0.2): translucent enough
+   for the drifting field to show through, blur 14px + saturate 150%,
+   a stronger bright top rim and the same specular sheen as .glass.
+   Cream text on a ~0.75-alpha dark card over the dimmed field keeps
+   contrast well above 4.5:1 — near-opaque was the floor, not the
+   target, and it read as flat solid on the live site. */
 .glass-card {
+  position: relative;
+  isolation: isolate;
   background: linear-gradient(
     180deg,
-    rgba(26, 26, 30, 0.96),
-    rgba(19, 19, 22, 0.92)
+    rgba(30, 30, 35, 0.78),
+    rgba(20, 20, 24, 0.72)
   );
   box-shadow:
-    0 10px 26px rgba(0, 0, 0, 0.3),
-    inset 0 1px 1px rgba(245, 242, 234, 0.1),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.25),
-    inset 0 0 0 1px rgba(245, 242, 234, 0.05);
+    0 12px 28px rgba(0, 0, 0, 0.35),
+    inset 0 1px 1px rgba(245, 242, 234, 0.24),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.3),
+    inset 0 0 0 1px rgba(245, 242, 234, 0.08);
+}
+.glass-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      220px 90px at var(--gx, 30%) var(--gy, -30%),
+      rgba(245, 242, 234, 0.1),
+      rgba(245, 242, 234, 0) 70%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(212, 162, 78, 0.12) 0%,
+      rgba(245, 242, 234, 0.04) 30%,
+      rgba(245, 242, 234, 0) 58%
+    );
 }
 
-/* Gold-tinted thick glass, for the Lab's gold-accent cards: the same
-   near-opaque material with the gold fill kept under the rim. */
+/* Gold-tinted frosted glass, for the Lab's gold-accent cards: the same
+   frost as .glass-card with the gold fill kept under the rim. */
 .glass-card-gold {
+  position: relative;
+  isolation: isolate;
   background: linear-gradient(
     180deg,
-    rgba(212, 162, 78, 0.16),
-    rgba(212, 162, 78, 0.07)
+    rgba(212, 162, 78, 0.22),
+    rgba(212, 162, 78, 0.12)
   );
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.35),
+    inset 0 1px 1px rgba(245, 242, 234, 0.24),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.3),
+    inset 0 0 0 1px rgba(212, 162, 78, 0.25);
 }
 body.no-glass .glass,
 body.no-glass .glass-bar,
@@ -390,7 +501,11 @@ body.no-glass .glass-toast {
   box-shadow: none;
 }
 body.no-glass .glass::after,
-body.no-glass .glass-bar::after {
+body.no-glass .glass-bar::after,
+body.no-glass .glass-card::after {
+  display: none;
+}
+body.no-glass .glass-field {
   display: none;
 }
 body.no-glass .glass-card,
@@ -423,8 +538,12 @@ body.no-glass .glass-card-gold {
     box-shadow: none !important;
   }
   .glass::after,
-  .glass-bar::after {
+  .glass-bar::after,
+  .glass-card::after {
     display: none;
+  }
+  .glass-field {
+    display: none !important;
   }
   .glass-card,
   .glass-card-gold {

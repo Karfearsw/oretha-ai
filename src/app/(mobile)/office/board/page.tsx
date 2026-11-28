@@ -171,7 +171,7 @@ function TaskCardView({ task, onOpen }: { task: Task; onOpen: () => void }) {
   return (
     <button
       onClick={onOpen}
-      className="flex flex-col gap-2.5 rounded-[16px] border border-white/8 bg-elevated p-3.5 text-left transition active:scale-[0.98]"
+      className="glass-card flex flex-col gap-2.5 rounded-[16px] border border-white/8 p-3.5 text-left transition active:scale-[0.98]"
     >
       <p className="text-[14px] font-semibold leading-snug text-cream">
         {task.title}

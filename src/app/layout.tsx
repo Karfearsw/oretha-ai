@@ -75,6 +75,14 @@ export default function RootLayout({
         {/* Liquid-glass preference, applied before first paint so a user
             who turned glass off never sees a flash of frost. */}
         <script dangerouslySetInnerHTML={{ __html: GLASS_INIT_SCRIPT }} />
+        {/* Drifting gradient field behind all app content — the frost
+            has to have something to show through. Shell wrappers are
+            transparent + positioned, so they paint above this layer;
+            hidden entirely when glass is off (body.no-glass). */}
+        <div aria-hidden="true" className="glass-field">
+          <i />
+          <i />
+        </div>
         {children}
       </body>
     </html>

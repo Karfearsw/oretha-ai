@@ -146,7 +146,7 @@ export default function InboxPage() {
       {loading ? (
         <p className="py-10 text-center text-[13px] text-clay">Loading…</p>
       ) : !mailbox ? (
-        <section className="flex flex-col gap-4 rounded-[18px] border border-white/8 bg-elevated p-5">
+        <section className="glass-card flex flex-col gap-4 rounded-[18px] border border-white/8 p-5">
           <span className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-gold/12 text-gold">
             <Mail size={22} />
           </span>
@@ -189,7 +189,7 @@ export default function InboxPage() {
         </section>
       ) : (
         <>
-          <section className="flex items-center justify-between rounded-[18px] border border-white/8 bg-elevated p-4">
+          <section className="glass-card flex items-center justify-between rounded-[18px] border border-white/8 p-4">
             <div className="min-w-0">
               <p className="truncate text-[14.5px] font-semibold text-cream">
                 {mailbox.address}
